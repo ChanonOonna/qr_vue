@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>สแกน QR Code - ระบบเช็คชื่อ</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .scan-container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .scan-card {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      animation: slideUp 0.6s ease-out;
+    }
+
+    .scan-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .scan-header h1 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .scan-header p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    .scan-content {
+      padding: 40px 30px;
+    }
+
+    .student-form {
+      margin-bottom: 30px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e1e8ed;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color 0.3s ease;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #4285f4;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    @media (max-width: 480px) {
+      .form-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+    }
+
+    .scan-btn {
+      width: 100%;
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 15px 20px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+    }
+
+    .scan-btn:hover {
+      background: #3367d6;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+    }
+
+    .scan-btn:disabled {
+      background: #95a5a6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .camera-container {
+      position: relative;
+      width: 100%;
+      height: 300px;
+      background: #f8f9fa;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .camera-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scan-frame {
+      width: 200px;
+      height: 200px;
+      border: 3px solid #4285f4;
+      border-radius: 10px;
+      position: relative;
+    }
+
+    .scan-frame::before {
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      right: -3px;
+      bottom: -3px;
+      border: 2px solid rgba(66, 133, 244, 0.3);
+      border-radius: 10px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    .result-message {
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .result-success {
+      background: #d5f4e6;
+      color: #27ae60;
+      border: 2px solid #27ae60;
+    }
+
+    .result-error {
+      background: #fadbd8;
+      color: #e74c3c;
+      border: 2px solid #e74c3c;
+    }
+
+    .result-info {
+      background: #d6eaf8;
+      color: #3498db;
+      border: 2px solid #3498db;
+    }
+
+    .manual-input {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 2px solid #e1e8ed;
+    }
+
+    .manual-input h3 {
+      color: #333;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .qr-input {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .qr-input input {
+      flex: 1;
+    }
+
+    .submit-btn {
+      background: #27ae60;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .submit-btn:hover {
+      background: #229954;
+      transform: translateY(-2px);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="scan-container">
+    <div class="scan-card">
+      <div class="scan-header">
+        <h1>📱 สแกน QR Code</h1>
+        <p>เช็คชื่อเข้าชั้นเรียน</p>
+      </div>
+
+      <div class="scan-content">
+        <!-- Camera Section -->
+        <div class="camera-container" id="cameraContainer">
+          <video id="video" autoplay playsinline></video>
+          <div class="camera-overlay">
+            <div class="scan-frame"></div>
+          </div>
+        </div>
+
+        <!-- Scan Button -->
+        <button class="scan-btn" id="scanBtn">
+          📷 เริ่มสแกน QR Code
+        </button>
+
+        <!-- Manual Input Section -->
+        <div class="manual-input">
+          <h3>หรือกรอก QR Token เอง</h3>
+          <div class="qr-input">
+            <input type="text" id="qrToken" placeholder="กรอก QR Token">
+            <button class="submit-btn" id="submitManualBtn">ส่ง</button>
+          </div>
+        </div>
+
+        <!-- Session Info Section (แสดงเมื่อเจอ qr_token) -->
+        <div id="sessionInfoSection" class="hidden" style="margin-top: 30px;">
+          <h3>ข้อมูลวิชา</h3>
+          <div id="sessionInfoDetails">
+            <!-- รายละเอียด session จะถูกเติมโดย JS -->
+          </div>
+          <form id="studentInfoForm" style="margin-top: 20px;">
+            <div class="form-group">
+              <label for="studentCode">รหัสนิสิต</label>
+              <input type="text" id="studentCode" placeholder="กรอกรหัสนิสิต" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="firstName">ชื่อ</label>
+                <input type="text" id="firstName" placeholder="กรอกชื่อ" required>
+              </div>
+              <div class="form-group">
+                <label for="lastName">นามสกุล</label>
+                <input type="text" id="lastName" placeholder="กรอกนามสกุล" required>
+              </div>
+            </div>
+            <button type="submit" class="submit-btn" id="submitStudentInfoBtn">ส่งข้อมูล</button>
+          </form>
+        </div>
+
+        <!-- Result Message -->
+        <div id="resultMessage" class="result-message hidden"></div>
+
+        <!-- Loading -->
+        <div id="loading" class="loading hidden">
+          <div class="spinner"></div>
+          <p>กำลังประมวลผล...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/jsQR.js"></script>
+  <script src="js/scan.js"></script>
+</body>
+</html>

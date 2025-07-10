@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ตั้งค่ารหัสครู - ระบบเช็คชื่อด้วยคิวอาร์โค้ด</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .setup-content {
+      padding: 30px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .setup-card {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      animation: slideUp 0.6s ease-out;
+    }
+
+    .setup-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    .setup-title {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .setup-subtitle {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    .setup-form {
+      padding: 40px 30px;
+    }
+
+    .user-info {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .user-name {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .user-email {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .form-group {
+      margin-bottom: 25px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+      font-size: 0.95rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #e1e8ed;
+      border-radius: 10px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      background: #f8f9fa;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #4285f4;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+    }
+
+    .form-group input::placeholder {
+      color: #999;
+    }
+
+    .setup-btn {
+      width: 100%;
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 15px 20px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+    }
+
+    .setup-btn:hover {
+      background: #3367d6;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+    }
+
+    .setup-btn:disabled {
+      background: #95a5a6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .error-message {
+      color: #e74c3c;
+      text-align: center;
+      margin-top: 15px;
+      font-size: 0.9rem;
+      min-height: 20px;
+    }
+
+    .loading {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading p {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .info-text {
+      background: #e8f4fd;
+      color: #0c5460;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #bee5eb;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-content">
+    <div class="setup-card">
+      <div class="setup-header">
+        <div class="setup-title">🎓 ตั้งค่ารหัสครู</div>
+        <div class="setup-subtitle">กรุณากรอกรหัสครูเพื่อใช้งานระบบ</div>
+      </div>
+      
+      <div class="setup-form">
+        <div class="user-info">
+          <div class="user-name" id="userName">กำลังโหลด...</div>
+          <div class="user-email" id="userEmail">กำลังโหลด...</div>
+        </div>
+
+        <div class="info-text">
+          <strong>💡 คำแนะนำ:</strong><br>
+          • รหัสครูคือรหัสที่ใช้ในการระบุตัวตนในระบบ<br>
+          • ตัวอย่าง: T001, T002, หรือรหัสตามที่มหาวิทยาลัยกำหนด<br>
+          • รหัสนี้จะใช้ในการสร้าง QR Code และรายงานต่างๆ
+        </div>
+        
+        <form id="teacherCodeForm">
+          <div class="form-group">
+            <label for="teacherCode">รหัสครู *</label>
+            <input 
+              type="text" 
+              id="teacherCode" 
+              name="teacherCode" 
+              required 
+              placeholder="เช่น T001, T002"
+              pattern="[A-Za-z0-9]+"
+              title="กรุณากรอกรหัสครู (ตัวอักษรและตัวเลขเท่านั้น)"
+            >
+          </div>
+          
+          <button type="submit" class="setup-btn" id="setupBtn">
+            ✅ บันทึกรหัสครู
+          </button>
+        </form>
+        
+        <div id="error" class="error-message"></div>
+        <div id="loading" class="loading" style="display: none;">
+          <div class="spinner"></div>
+          <p>กำลังบันทึกข้อมูล...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/setup-teacher-code.js"></script>
+</body>
+</html> 
