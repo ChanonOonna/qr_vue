@@ -227,7 +227,7 @@ class QRScanner {
     const result = await response.json();
     return result.found;
   }
-
+//ตรวจสอบชื่อนักเรียนว่ามีการลงทะเบียนใบหน้าไหม
   async checkDuplicateSubmission(qrToken, studentCode, firstName, lastName) {
     const response = await fetch('/api/attendance/check-duplicate-submission', {
       method: 'POST',
@@ -242,7 +242,7 @@ class QRScanner {
     const result = await response.json();
     return result.duplicate;
   }
-
+//
   async submitStudentInfo() {
     const studentCode = document.getElementById('studentCode').value.trim();
     const firstName = document.getElementById('firstName').value.trim();
@@ -274,7 +274,15 @@ class QRScanner {
       this.hideLoading();
       return;
     }
+    // ถ้าไม่ซ้ำ ให้เปิด popup กล้องเพื่อยืนยันใบหน้า
     try {
+      const faceDescriptor = await this.openFaceVerificationPopup();
+      if (!faceDescriptor) {
+        this.showMessage('กรุณาสแกนใบหน้าให้ชัดเจน', 'error');
+        this.hideLoading();
+        return;
+      }
+      // ส่งข้อมูลไป backend พร้อม face_descriptor
       const response = await fetch('/api/attendance/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -283,7 +291,8 @@ class QRScanner {
           student_id: studentCode,
           firstname: firstName,
           lastname: lastName,
-          teacher_id: this.currentTeacherId // ส่ง teacher_id ไปด้วย
+          face_descriptor: JSON.stringify(faceDescriptor),
+          teacher_id: this.currentTeacherId
         })
       });
       const result = await response.json();
@@ -299,6 +308,107 @@ class QRScanner {
     } finally {
       this.hideLoading();
     }
+  }
+
+  // เพิ่มฟังก์ชัน popup กล้องเพื่อยืนยันใบหน้า
+  async openFaceVerificationPopup() {
+    return new Promise(async (resolve) => {
+      // สร้าง popup
+      const popup = document.createElement('div');
+      popup.style.position = 'fixed';
+      popup.style.top = '0';
+      popup.style.left = '0';
+      popup.style.width = '100vw';
+      popup.style.height = '100vh';
+      popup.style.background = 'rgba(0,0,0,0.7)';
+      popup.style.display = 'flex';
+      popup.style.alignItems = 'center';
+      popup.style.justifyContent = 'center';
+      popup.style.zIndex = '9999';
+
+      const container = document.createElement('div');
+      container.style.background = '#fff';
+      container.style.padding = '24px';
+      container.style.borderRadius = '12px';
+      container.style.boxShadow = '0 2px 12px #0003';
+      container.style.display = 'flex';
+      container.style.flexDirection = 'column';
+      container.style.alignItems = 'center';
+
+      const video = document.createElement('video');
+      video.width = 320;
+      video.height = 240;
+      video.autoplay = true;
+      video.style.borderRadius = '10px';
+      video.style.boxShadow = '0 2px 8px #0002';
+      container.appendChild(video);
+
+      const statusDiv = document.createElement('div');
+      statusDiv.style.margin = '12px 0';
+      statusDiv.style.fontSize = '15px';
+      statusDiv.textContent = 'กรุณาวางใบหน้าในกรอบกล้อง';
+      container.appendChild(statusDiv);
+
+      const btnRow = document.createElement('div');
+      btnRow.style.marginTop = '10px';
+      btnRow.style.display = 'flex';
+      btnRow.style.gap = '10px';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.textContent = 'ยืนยันใบหน้า';
+      confirmBtn.className = 'btn';
+      btnRow.appendChild(confirmBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'ยกเลิก';
+      cancelBtn.className = 'btn';
+      btnRow.appendChild(cancelBtn);
+
+      container.appendChild(btnRow);
+      popup.appendChild(container);
+      document.body.appendChild(popup);
+
+      let stream = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        await video.play();
+      } catch (e) {
+        statusDiv.textContent = 'ไม่สามารถเปิดกล้องได้';
+        confirmBtn.disabled = true;
+      }
+
+      confirmBtn.onclick = async () => {
+        statusDiv.textContent = 'กำลังตรวจจับใบหน้า...';
+        try {
+          // ใช้ face-api.js ตรวจจับใบหน้า
+          if (window.faceapi) {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+            await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+            await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+            const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+            if (!detection) {
+              statusDiv.textContent = '❌ ไม่พบใบหน้า กรุณาวางใบหน้าในกรอบกล้อง';
+              return;
+            }
+            const faceDescriptor = Array.from(detection.descriptor);
+            // ปิดกล้องและ popup
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            document.body.removeChild(popup);
+            resolve(faceDescriptor);
+          } else {
+            statusDiv.textContent = 'face-api.js ไม่พร้อมใช้งาน';
+          }
+        } catch (e) {
+          statusDiv.textContent = 'เกิดข้อผิดพลาดในการตรวจจับใบหน้า';
+        }
+      };
+      cancelBtn.onclick = () => {
+        if (stream) stream.getTracks().forEach(track => track.stop());
+        document.body.removeChild(popup);
+        resolve(null);
+      };
+    });
   }
 
   /*

@@ -199,10 +199,42 @@ router.post('/student/register', async (req, res) => {
   }
   try {
     const { pool } = require('../db');
+    // 1. เช็ค student_id ซ้ำ (เหมือนเดิม)
     const [rows] = await pool.execute('SELECT * FROM studentface WHERE student_id = ?', [student_id]);
     if (rows.length > 0) {
       return res.status(400).json({ success: false, message: 'นักเรียนคนนี้ลงทะเบียนไปแล้ว' });
     }
+
+    // 2. ดึง face_descriptor ทั้งหมด
+    const [faceRows] = await pool.execute('SELECT student_id, face_descriptor FROM studentface');
+    const newDescriptor = JSON.parse(face_descriptor);
+
+    // 3. ฟังก์ชันคำนวณ L2 distance
+    const l2Distance = (a, b) => {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        sum += (a[i] - b[i]) ** 2;
+      }
+      return Math.sqrt(sum);
+    };
+
+    // 4. เปรียบเทียบกับทุก descriptor ใน DB
+    for (const row of faceRows) {
+      if (!row.face_descriptor) continue;
+      let dbDescriptor;
+      try {
+        dbDescriptor = JSON.parse(row.face_descriptor);
+      } catch (e) {
+        continue;
+      }
+      if (!Array.isArray(dbDescriptor) || dbDescriptor.length !== newDescriptor.length) continue;
+      const dist = l2Distance(newDescriptor, dbDescriptor);
+      if (dist < 0.5) { // threshold 0.5 (ปรับได้)
+        return res.status(400).json({ success: false, message: 'ใบหน้านี้ถูกใช้ลงทะเบียนไปแล้วกับรหัสอื่น' });
+      }
+    }
+
+    // 5. ถ้าไม่ซ้ำ ให้ insert
     await pool.execute(
       'INSERT INTO studentface (student_id, first_name, last_name, face_descriptor) VALUES (?, ?, ?, ?)',
       [student_id, first_name, last_name, face_descriptor]
