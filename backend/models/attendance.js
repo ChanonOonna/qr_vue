@@ -129,6 +129,21 @@ class Attendance {
       throw new Error(`Failed to check existing attendance: ${error.message}`);
     }
   }
+
+  static async checkExistingAttendanceByFullInfo(sessionId, studentId, firstname, lastname) {
+    const query = `
+      SELECT sa.*
+      FROM student_attendance sa
+      JOIN students s ON sa.student_id = s.id
+      WHERE sa.qr_session_id = ? AND sa.student_id = ? AND s.firstname = ? AND s.lastname = ?
+    `;
+    try {
+      const [rows] = await pool.execute(query, [sessionId, studentId, firstname, lastname]);
+      return rows[0];
+    } catch (error) {
+      throw new Error(`Failed to check existing attendance by full info: ${error.message}`);
+    }
+  }
 }
 
 module.exports = Attendance;

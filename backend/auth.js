@@ -19,21 +19,31 @@ const strategy = new Auth0Strategy(
         return done(null, false, { message: 'Only @ku.th emails are allowed' });
       }
 
-      // Check if teacher exists in database
+      // Check if teacher exists in database (by auth0_id)
       const connection = await pool.getConnection();
-      const [rows] = await connection.execute(
+      let [rows] = await connection.execute(
         'SELECT * FROM teachers WHERE auth0_id = ?',
         [profile.id]
       );
 
       if (rows.length === 0) {
+        // ถ้าไม่เจอด้วย auth0_id ให้เช็คซ้ำด้วย email
+        [rows] = await connection.execute(
+          'SELECT * FROM teachers WHERE email = ?',
+          [email]
+        );
+        if (rows.length > 0) {
+          // ถ้ามี email นี้อยู่แล้ว ให้ login ได้เลย (ไม่ต้อง insert)
+          const teacher = rows[0];
+          connection.release();
+          return done(null, teacher);
+        }
         // Create new teacher without teacher_code (will be filled later)
         const teacherId = `T${Date.now()}`;
         await connection.execute(
           'INSERT INTO teachers (id, name, email, auth0_id) VALUES (?, ?, ?, ?)',
           [teacherId, profile.displayName || profile.name.givenName, email, profile.id]
         );
-        
         const newTeacher = {
           id: teacherId,
           name: profile.displayName || profile.name.givenName,
@@ -41,7 +51,6 @@ const strategy = new Auth0Strategy(
           auth0_id: profile.id,
           teacher_code: null // Will be filled later
         };
-        
         connection.release();
         return done(null, newTeacher);
       } else {

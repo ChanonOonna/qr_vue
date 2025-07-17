@@ -13,22 +13,23 @@ class Student {
     // Generate student ID if not provided
     const studentId = `ST${Date.now()}`;
 
+    // ตรวจสอบว่ามี student_code นี้อยู่แล้วหรือยัง
+    const [existing] = await pool.execute('SELECT id FROM students WHERE student_code = ?', [student_code]);
+    if (existing.length > 0) {
+      // ถ้ามีอยู่แล้ว ไม่ต้อง insert ซ้ำ
+      return null;
+    }
+
     const query = `
       INSERT INTO students (id, firstname, lastname, student_code, class_group, year)
       VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-      firstname = VALUES(firstname),
-      lastname = VALUES(lastname),
-      class_group = VALUES(class_group),
-      year = VALUES(year),
-      updated_at = CURRENT_TIMESTAMP
     `;
 
     try {
       await pool.execute(query, [studentId, firstname, lastname, student_code, class_group, year]);
       return studentId;
     } catch (error) {
-      throw new Error(`Failed to create/update student: ${error.message}`);
+      throw new Error(`Failed to create student: ${error.message}`);
     }
   }
 

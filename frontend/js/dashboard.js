@@ -140,6 +140,15 @@ class DashboardManager {
     if (createQRSubmitBtn) {
       createQRSubmitBtn.addEventListener('click', () => this.createQRCode());
     }
+
+    // Register Face button
+    const registerFaceBtn = document.getElementById('registerFaceBtn');
+    if (registerFaceBtn) {
+      registerFaceBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.location.href = '/foraddface';
+      });
+    }
   }
 
   showMainView() {
@@ -657,8 +666,22 @@ class DashboardManager {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        this.downloadExcel(data);
+        const blob = await response.blob();
+        // สร้างลิงก์ดาวน์โหลดไฟล์ .xlsx
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        // ดึงชื่อไฟล์จาก header
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'attendance.xlsx';
+        if (disposition && disposition.includes('filename=')) {
+          filename = disposition.split('filename=')[1].replace(/"/g, '');
+        }
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
       } else {
         this.showError('เกิดข้อผิดพลาดในการ export ข้อมูล');
       }
@@ -736,13 +759,21 @@ class DashboardManager {
     const headers = Object.keys(data.attendance[0] || {});
     const csvContent = [
       headers.join(','),
-      ...data.attendance.map(row => 
-        headers.map(header => `"${row[header] || ''}"`).join(',')
+      ...data.attendance.map(row =>
+        headers.map(header => {
+          let value = row[header] || '';
+          // ถ้าเป็นรหัสนักเรียน ให้ใส่ ' นำหน้า
+          if (header === 'รหัสนักเรียน') value = `'${value}`;
+          // escape double quote
+          value = String(value).replace(/"/g, '""');
+          return `"${value}"`;
+        }).join(',')
       )
     ].join('\n');
 
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // เพิ่ม BOM เพื่อรองรับภาษาไทยใน Excel
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);

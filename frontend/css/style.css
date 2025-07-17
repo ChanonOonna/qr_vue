@@ -899,3 +899,18 @@ th {
 .btn-danger:hover {
   background: #c0392b;
 }
+
+.dashboard-container, .container {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.card, .qr-session-card {
+  margin-bottom: 16px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px #0002;
+  background: #fff;
+  padding: 16px;
+  /* เพิ่ม max-width ถ้าต้องการ */
+  /* max-width: 400px; */
+}

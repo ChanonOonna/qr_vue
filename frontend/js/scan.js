@@ -47,9 +47,9 @@ class QRScanner {
     }
 
     // Student code input
-    document.getElementById('studentCode').addEventListener('input', (e) => {
-      this.validateStudentCode(e.target.value);
-    });
+    // document.getElementById('studentCode').addEventListener('input', (e) => {
+    //   this.validateStudentCode(e.target.value);
+    // });
   }
 
   async checkCameraSupport() {
@@ -131,8 +131,16 @@ class QRScanner {
       // เรียก API เพื่อดึงข้อมูล session
       const response = await fetch(`/api/attendance/session-info/${qrToken}`);
       if (!response.ok) {
-        this.showMessage('ไม่พบข้อมูลนี้ หรือ QR Token ไม่ถูกต้อง', 'error');
+        let errorMsg = 'ไม่พบข้อมูลนี้ หรือ QR Token ไม่ถูกต้อง';
+        try {
+          const err = await response.json();
+          if (err && err.error === 'ยังไม่ถึงเวลาเริ่มเช็คชื่อ') {
+            errorMsg = err.error;
+          }
+        } catch {}
+        this.showMessage(errorMsg, 'error');
         this.sessionInfoSection.classList.add('hidden');
+        this.studentInfoForm.classList.add('hidden');
         this.hideLoading();
         return;
       }
@@ -140,10 +148,12 @@ class QRScanner {
       this.currentQrToken = qrToken;
       this.showSessionInfo(session);
       this.sessionInfoSection.classList.remove('hidden');
+      this.studentInfoForm.classList.remove('hidden');
       this.hideLoading();
     } catch (error) {
       this.showMessage('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
       this.sessionInfoSection.classList.add('hidden');
+      this.studentInfoForm.classList.add('hidden');
       this.hideLoading();
     }
   }
@@ -159,8 +169,16 @@ class QRScanner {
       // เรียก API เพื่อดึงข้อมูล session
       const response = await fetch(`/api/attendance/session-info/${qrToken}`);
       if (!response.ok) {
-        this.showMessage('ไม่พบข้อมูลนี้ หรือ QR Token ไม่ถูกต้อง', 'error');
+        let errorMsg = 'ไม่พบข้อมูลนี้ หรือ QR Token ไม่ถูกต้อง';
+        try {
+          const err = await response.json();
+          if (err && err.error === 'ยังไม่ถึงเวลาเริ่มเช็คชื่อ') {
+            errorMsg = err.error;
+          }
+        } catch {}
+        this.showMessage(errorMsg, 'error');
         this.sessionInfoSection.classList.add('hidden');
+        this.studentInfoForm.classList.add('hidden');
         this.hideLoading();
         return;
       }
@@ -168,10 +186,12 @@ class QRScanner {
       this.currentQrToken = qrToken;
       this.showSessionInfo(session);
       this.sessionInfoSection.classList.remove('hidden');
+      this.studentInfoForm.classList.remove('hidden');
       this.hideLoading();
     } catch (error) {
       this.showMessage('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
       this.sessionInfoSection.classList.add('hidden');
+      this.studentInfoForm.classList.add('hidden');
       this.hideLoading();
     }
   }
@@ -194,6 +214,35 @@ class QRScanner {
     document.getElementById('lastName').value = '';
   }
 
+  async validateStudentFace(studentCode, firstName, lastName) {
+    const response = await fetch('/api/attendance/validate-face', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        student_id: studentCode,
+        firstname: firstName,
+        lastname: lastName
+      })
+    });
+    const result = await response.json();
+    return result.found;
+  }
+
+  async checkDuplicateSubmission(qrToken, studentCode, firstName, lastName) {
+    const response = await fetch('/api/attendance/check-duplicate-submission', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        qr_token: qrToken,
+        student_code: studentCode,
+        firstname: firstName,
+        lastname: lastName
+      })
+    });
+    const result = await response.json();
+    return result.duplicate;
+  }
+
   async submitStudentInfo() {
     const studentCode = document.getElementById('studentCode').value.trim();
     const firstName = document.getElementById('firstName').value.trim();
@@ -210,7 +259,21 @@ class QRScanner {
       this.showMessage('ไม่พบข้อมูล teacher_id', 'error');
       return;
     }
+    // เช็ค studentface ก่อน
     this.showLoading();
+    const found = await this.validateStudentFace(studentCode, firstName, lastName);
+    if (!found) {
+      this.showMessage('ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า', 'error');
+      this.hideLoading();
+      return;
+    }
+    // เช็คซ้ำใน student_submissions ก่อน
+    const isDuplicate = await this.checkDuplicateSubmission(this.currentQrToken, studentCode, firstName, lastName);
+    if (isDuplicate) {
+      this.showMessage('มีการลงทะเบียนแล้ว', 'error');
+      this.hideLoading();
+      return;
+    }
     try {
       const response = await fetch('/api/attendance/checkin', {
         method: 'POST',

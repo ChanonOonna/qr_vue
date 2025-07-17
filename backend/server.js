@@ -43,7 +43,7 @@ app.use(session({
   cookie: {
     secure: false,
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 1 * 60 * 60 * 1000 // 1 ชั่วโมง (session จะหมดอายุอัตโนมัติหลังจาก 1 ชั่วโมง)
   }
 }));
 
@@ -101,6 +101,11 @@ app.get('/dashboard', requireTeacherCode, (req, res) => {
 // Public route - Scan QR Code
 app.get('/scan', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/scan.html'));
+});
+
+// Public route - Register Face
+app.get('/foraddface', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/foraddface.html'));
 });
 
 // API routes

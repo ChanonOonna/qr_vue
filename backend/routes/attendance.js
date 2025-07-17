@@ -2,6 +2,7 @@ const express = require('express');
 const Attendance = require('../models/attendance');
 const QRCodeSession = require('../models/qrcodeSession');
 const { requireTeacher } = require('../auth');
+const XLSX = require('xlsx');
 
 const router = express.Router();
 
@@ -97,10 +98,21 @@ router.post('/checkin', async (req, res) => {
       return res.status(400).json({ error: 'QR session has expired' });
     }
     
-    // Check if student already checked in
-    const existingAttendance = await Attendance.checkExistingAttendance(session.id, student_id);
+    // Check if student already checked in (by id, firstname, lastname)
+    const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, student_id, firstname, lastname);
     if (existingAttendance) {
       return res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
+    }
+    
+    // ตรวจสอบกับฐานข้อมูล studentface ก่อน
+    const { pool } = require('../db');
+    console.log('DEBUG FACE:', student_id, firstname, lastname);
+    const [faceRows] = await pool.execute(
+      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ? AND last_name = ?',
+      [student_id, firstname, lastname]
+    );
+    if (faceRows.length === 0) {
+      return res.status(400).json({ error: 'ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า' });
     }
     
     // Determine status based on time
@@ -126,14 +138,6 @@ router.post('/checkin', async (req, res) => {
         class_group: session.class_group
       });
       student = await Student.getById(newStudentId);
-    } else {
-      // Update existing student info using create with ON DUPLICATE KEY UPDATE
-      await Student.create({
-        student_code: student_id,
-        firstname,
-        lastname,
-        class_group: session.class_group
-      });
     }
     
     // Create attendance record
@@ -148,7 +152,23 @@ router.post('/checkin', async (req, res) => {
     
     await Attendance.create(attendanceData);
 
-    // เพิ่มบันทึกลง student_submissions
+    // เพิ่มบันทึกลง student_submissions เฉพาะถ้ายังไม่มีข้อมูลนี้
+    // 1. หา qr_session_id จาก session.id
+    // 2. หา student_id จาก student.id
+    // 3. เช็คว่ามี submission นี้อยู่แล้วหรือยัง
+    const [existingSubRows] = await pool.execute(`
+      SELECT * FROM qr_sessions
+      INNER JOIN student_submissions ON qr_sessions.id = student_submissions.qr_session_id
+      INNER JOIN students ON students.id = student_submissions.student_id
+      WHERE qr_sessions.qr_token = ?
+        AND students.student_code = ?
+        AND student_submissions.firstname = ?
+        AND student_submissions.lastname = ?
+    `, [qr_token, student_id, firstname, lastname]);
+    if (existingSubRows.length > 0) {
+      return res.status(400).json({ error: 'มีการลงทะเบียนแล้ว' });
+    }
+    // ถ้ายังไม่มี ให้ insert
     const StudentSubmission = require('../models/studentSubmission');
     await StudentSubmission.create({
       student_id: student.id,
@@ -171,19 +191,39 @@ router.post('/checkin', async (req, res) => {
   }
 });
 
+// ลงทะเบียนใบหน้านักเรียน (ป้องกันซ้ำ)
+router.post('/student/register', async (req, res) => {
+  const { student_id, first_name, last_name, face_descriptor } = req.body;
+  if (!student_id || !first_name || !last_name || !face_descriptor) {
+    return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบ' });
+  }
+  try {
+    const { pool } = require('../db');
+    const [rows] = await pool.execute('SELECT * FROM studentface WHERE student_id = ?', [student_id]);
+    if (rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'นักเรียนคนนี้ลงทะเบียนไปแล้ว' });
+    }
+    await pool.execute(
+      'INSERT INTO studentface (student_id, first_name, last_name, face_descriptor) VALUES (?, ?, ?, ?)',
+      [student_id, first_name, last_name, face_descriptor]
+    );
+    res.json({ success: true, message: 'ลงทะเบียนสำเร็จ' });
+  } catch (error) {
+    console.error('Error in /student/register:', error);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการลงทะเบียน' });
+  }
+});
+
 // Export attendance data (for Excel download)
 router.get('/export/:sessionId', requireTeacher, async (req, res) => {
   try {
     const sessionId = req.params.sessionId;
-    
     // Check if session belongs to teacher
     const session = await QRCodeSession.getById(sessionId);
     if (!session || session.teacher_id !== req.user.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    
     const attendance = await Attendance.getBySession(sessionId);
-    
     // Format data for Excel export
     const exportData = attendance.map(record => ({
       'รหัสนักเรียน': record.student_code,
@@ -195,16 +235,22 @@ router.get('/export/:sessionId', requireTeacher, async (req, res) => {
       'คะแนนเพิ่มเติม': record.extra_score,
       'หมายเหตุ': record.notes
     }));
-    
-    res.json({
-      session: {
-        subject_code: session.subject_code,
-        subject_name: session.subject_name,
-        class_group: session.class_group,
-        start_time: session.start_time
-      },
-      attendance: exportData
-    });
+    // Create worksheet and workbook
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    // Force column A (รหัสนักเรียน) to be text
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      const cellAddress = { c: 0, r: R }; // column 0 = A
+      const cellRef = XLSX.utils.encode_cell(cellAddress);
+      if (ws[cellRef]) ws[cellRef].z = '@';
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const today = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Disposition', `attachment; filename="attendance_${session.subject_code}_${today}.xlsx"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
   } catch (error) {
     console.error('Error exporting attendance:', error);
     res.status(500).json({ error: 'Failed to export attendance data' });
@@ -217,6 +263,12 @@ router.get('/session-info/:qr_token', async (req, res) => {
     const session = await QRCodeSession.getByToken(req.params.qr_token);
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
+    }
+    // เช็คว่ายังไม่ถึงเวลาเริ่มเช็คชื่อ
+    const now = new Date();
+    const startTime = new Date(session.start_time);
+    if (now < startTime) {
+      return res.status(400).json({ error: 'ยังไม่ถึงเวลาเริ่มเช็คชื่อ' });
     }
     res.json({
       teacher_code: session.teacher_code,
@@ -231,6 +283,49 @@ router.get('/session-info/:qr_token', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get session info' });
+  }
+});
+
+// Validate student face registration
+router.post('/validate-face', async (req, res) => {
+  const { student_id, firstname, lastname } = req.body;
+  const { pool } = require('../db');
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ? AND last_name = ?',
+      [student_id.trim(), firstname.trim(), lastname.trim()]
+    );
+    if (rows.length > 0) {
+      res.json({ found: true });
+    } else {
+      res.json({ found: false });
+    }
+  } catch (error) {
+    res.status(500).json({ found: false, error: 'Database error' });
+  }
+});
+
+// Check duplicate submission in student_submissions
+router.post('/check-duplicate-submission', async (req, res) => {
+  const { qr_token, student_code, firstname, lastname } = req.body;
+  const { pool } = require('../db');
+  try {
+    const [rows] = await pool.execute(`
+      SELECT * FROM qr_sessions
+      INNER JOIN student_submissions ON qr_sessions.id = student_submissions.qr_session_id
+      INNER JOIN students ON students.id = student_submissions.student_id
+      WHERE qr_sessions.qr_token = ?
+        AND students.student_code = ?
+        AND student_submissions.firstname = ?
+        AND student_submissions.lastname = ?
+    `, [qr_token, student_code, firstname, lastname]);
+    if (rows.length > 0) {
+      res.json({ duplicate: true });
+    } else {
+      res.json({ duplicate: false });
+    }
+  } catch (error) {
+    res.status(500).json({ duplicate: false, error: 'Database error' });
   }
 });
 
