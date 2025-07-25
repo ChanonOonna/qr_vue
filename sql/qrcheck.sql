@@ -22,6 +22,18 @@ CREATE TABLE students (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- Student Face Recognition table (สำหรับเก็บข้อมูลใบหน้านักเรียน)
+CREATE TABLE studentface (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    student_id VARCHAR(20) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    face_descriptor TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_student_id (student_id)
+);
+
 -- QR Sessions table (for each QR code created by teacher)
 CREATE TABLE qr_sessions (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -79,3 +91,4 @@ CREATE INDEX idx_student_attendance_time ON student_attendance(checkin_time);
 CREATE INDEX idx_student_submissions_student ON student_submissions(student_id);
 CREATE INDEX idx_student_submissions_teacher ON student_submissions(teacher_id);
 CREATE INDEX idx_student_submissions_time ON student_submissions(submission_time);
+CREATE INDEX idx_studentface_student_id ON studentface(student_id);

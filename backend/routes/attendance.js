@@ -76,7 +76,7 @@ router.get('/stats', requireTeacher, async (req, res) => {
 // Student check-in (for QR scanning)
 router.post('/checkin', async (req, res) => {
   try {
-    const { qr_token, student_id, firstname, lastname } = req.body;
+    const { qr_token, student_id, firstname, lastname, face_descriptor } = req.body;
     
     if (!qr_token || !student_id || !firstname || !lastname) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -113,6 +113,34 @@ router.post('/checkin', async (req, res) => {
     );
     if (faceRows.length === 0) {
       return res.status(400).json({ error: 'ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า' });
+    }
+
+    // ตรวจสอบ face_descriptor ถ้ามีการส่งมา
+    if (face_descriptor) {
+      try {
+        const newDescriptor = JSON.parse(face_descriptor);
+        const registeredDescriptor = JSON.parse(faceRows[0].face_descriptor);
+        
+        // ฟังก์ชันคำนวณ L2 distance
+        const l2Distance = (a, b) => {
+          let sum = 0;
+          for (let i = 0; i < a.length; i++) {
+            sum += (a[i] - b[i]) ** 2;
+          }
+          return Math.sqrt(sum);
+        };
+        
+        // เปรียบเทียบ face descriptor
+        const distance = l2Distance(newDescriptor, registeredDescriptor);
+        console.log('Face distance:', distance);
+        
+        if (distance > 0.5) { // threshold 0.5
+          return res.status(400).json({ error: 'ใบหน้าที่สแกนไม่ตรงกับข้อมูลที่ลงทะเบียนไว้ กรุณาลองใหม่' });
+        }
+      } catch (e) {
+        console.error('Error comparing face descriptors:', e);
+        return res.status(400).json({ error: 'เกิดข้อผิดพลาดในการตรวจสอบใบหน้า' });
+      }
     }
     
     // Determine status based on time

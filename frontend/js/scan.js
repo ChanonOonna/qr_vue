@@ -346,7 +346,8 @@ class QRScanner {
       const statusDiv = document.createElement('div');
       statusDiv.style.margin = '12px 0';
       statusDiv.style.fontSize = '15px';
-      statusDiv.textContent = 'กรุณาวางใบหน้าในกรอบกล้อง';
+      statusDiv.style.whiteSpace = 'pre-line'; // หรือ 'pre-wrap'
+      statusDiv.innerHTML = 'กรุณาวางใบหน้าในกรอบกล้อง<br>กรุณาทำตามนี้: ขยับหัว กระพริบตา ยิ้ม อย่างละ 1 ครั้ง';
       container.appendChild(statusDiv);
 
       const btnRow = document.createElement('div');
@@ -357,6 +358,7 @@ class QRScanner {
       const confirmBtn = document.createElement('button');
       confirmBtn.textContent = 'ยืนยันใบหน้า';
       confirmBtn.className = 'btn';
+      confirmBtn.disabled = true; // เริ่มต้นปิดไว้
       btnRow.appendChild(confirmBtn);
 
       const cancelBtn = document.createElement('button');
@@ -374,36 +376,166 @@ class QRScanner {
         video.srcObject = stream;
         await video.play();
       } catch (e) {
-        statusDiv.textContent = 'ไม่สามารถเปิดกล้องได้';
+        showStatus('ไม่สามารถเปิดกล้องได้', 'error');
         confirmBtn.disabled = true;
+        return;
+      }
+      let livenessCheckPassed = false;
+      // ฟังก์ชันแสดงสถานะแบบ verify.js
+      function showStatus(msg, type) {
+        statusDiv.textContent = msg;
+        statusDiv.className = 'status ' + (type || '');
       }
 
-      confirmBtn.onclick = async () => {
-        statusDiv.textContent = 'กำลังตรวจจับใบหน้า...';
+      // --- Liveness Detection Logic (นำมาจาก verify.js) ---
+      const requiredBlinks = 3;
+      const requiredHeadMoves = 2;
+      const requiredSmiles = 1;
+      let blinkCount = 0;
+      let headMoveCount = 0;
+      let smileDetected = false;
+      let lastHeadPosition = null;
+      let previousEyeAspectRatio = null;
+
+      // Euclidean distance
+      const euclideanDistance = (pt1, pt2) => {
+        return Math.sqrt((pt1.x - pt2.x) ** 2 + (pt1.y - pt2.y) ** 2);
+      };
+      // EAR calculation
+      const calculateEAR = (eye) => {
+        if (!eye || eye.length < 6) return 0;
+        const A = euclideanDistance(eye[1], eye[5]);
+        const B = euclideanDistance(eye[2], eye[4]);
+        const C = euclideanDistance(eye[0], eye[3]);
+        if (C === 0 || isNaN(C)) return 0;
+        const ear = (A + B) / (2.0 * C);
+        if (isNaN(ear)) return 0;
+        return ear;
+      };
+      // Detect blink
+      const detectBlink = (landmarks) => {
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+        if (!leftEye || !rightEye || leftEye.length < 6 || rightEye.length < 6) return false;
+        const leftEAR = calculateEAR(leftEye);
+        const rightEAR = calculateEAR(rightEye);
+        if (leftEAR === 0 || rightEAR === 0) return false;
+        const avgEAR = (leftEAR + rightEAR) / 2.0;
+        const EAR_THRESHOLD = 0.32;
+        let blinked = false;
+        if (previousEyeAspectRatio !== null && previousEyeAspectRatio > EAR_THRESHOLD && avgEAR < EAR_THRESHOLD) {
+          blinkCount++;
+          blinked = true;
+        }
+        previousEyeAspectRatio = avgEAR;
+        return blinked;
+      };
+      // Detect smile
+      const detectSmile = (expressions) => {
+        const happyScore = expressions.happy;
+        const threshold = 0.1;
+        return happyScore > threshold;
+      };
+      // Detect head movement
+      const detectHeadMovement = (landmarks) => {
+        const nose = landmarks.getNose()[3];
+        if (lastHeadPosition) {
+          const distance = euclideanDistance(nose, lastHeadPosition);
+          const threshold = 30;
+          if (distance > threshold) {
+            headMoveCount++;
+            lastHeadPosition = nose;
+            return true;
+          }
+        } else {
+          lastHeadPosition = nose;
+        }
+        return false;
+      };
+      // --- End Liveness Logic ---
+
+      // แสดงคำแนะนำแบบ verify.js
+      showStatus('📋 คำแนะนำ: กระพริบตา 3 ครั้ง, ขยับหัว 2 ครั้ง, ยิ้ม 1 ครั้ง', '');
+      setTimeout(() => {
+        showStatus('🎯 เริ่มต้น: วางใบหน้าในกรอบกล้อง และเริ่มทำตามคำแนะนำ', '');
+      }, 1200);
+
+      // ฟังก์ชันตรวจสอบ liveness
+      const checkLiveness = async () => {
+        if (!window.faceapi) {
+          showStatus('face-api.js ไม่พร้อมใช้งาน', 'error');
+          return;
+        }
         try {
-          // ใช้ face-api.js ตรวจจับใบหน้า
+          const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceExpressions();
+          if (!detection) {
+            showStatus('❌ ไม่พบใบหน้า กรุณาวางใบหน้าในกรอบกล้อง', 'error');
+            return;
+          }
+          // ตรวจจับแต่ละ action
+          detectBlink(detection.landmarks);
+          detectHeadMovement(detection.landmarks);
+          if (detectSmile(detection.expressions)) {
+            smileDetected = true;
+          }
+          // อัปเดตสถานะแบบ verify.js
+          showStatus(
+            `👁️ กระพริบตา: ${blinkCount}/${requiredBlinks}${blinkCount >= requiredBlinks ? ' ✅' : ''}, ` +
+            `🤸 ขยับหัว: ${headMoveCount}/${requiredHeadMoves}${headMoveCount >= requiredHeadMoves ? ' ✅' : ''}, ` +
+            `😊 ยิ้ม: ${smileDetected ? '✓ ✅' : '✗'}`,
+            ''
+          );
+          // ตรวจสอบว่าผ่าน liveness check ทั้งหมดหรือยัง
+          if (blinkCount >= requiredBlinks && headMoveCount >= requiredHeadMoves && smileDetected && !livenessCheckPassed) {
+            livenessCheckPassed = true;
+            showStatus('🎉 ✅ ผ่านการตรวจสอบ Liveness ทั้งหมด!', 'success');
+            confirmBtn.disabled = false;
+          }
+        } catch (e) {
+          showStatus('เกิดข้อผิดพลาดในการตรวจสอบ Liveness', 'error');
+        }
+      };
+
+      // เริ่มการตรวจจับ liveness
+      const livenessInterval = setInterval(checkLiveness, 100);
+
+      confirmBtn.onclick = async () => {
+        if (!livenessCheckPassed) {
+          showStatus('กรุณาทำการตรวจสอบให้ครบก่อน', 'error');
+          return;
+        }
+
+        showStatus('กำลังตรวจจับใบหน้า...', '');
+        try {
+          // ใช้ face-api.js ตรวจจับใบหน้า (ไม่ต้องโหลดโมเดลซ้ำ)
           if (window.faceapi) {
-            await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
-            await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-            await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
-            const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+            const detection = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+              
             if (!detection) {
-              statusDiv.textContent = '❌ ไม่พบใบหน้า กรุณาวางใบหน้าในกรอบกล้อง';
+              showStatus('❌ ไม่พบใบหน้า กรุณาวางใบหน้าในกรอบกล้อง', 'error');
               return;
             }
+            
             const faceDescriptor = Array.from(detection.descriptor);
             // ปิดกล้องและ popup
+            clearInterval(livenessInterval);
             if (stream) stream.getTracks().forEach(track => track.stop());
             document.body.removeChild(popup);
             resolve(faceDescriptor);
           } else {
-            statusDiv.textContent = 'face-api.js ไม่พร้อมใช้งาน';
+            showStatus('face-api.js ไม่พร้อมใช้งาน', 'error');
           }
         } catch (e) {
-          statusDiv.textContent = 'เกิดข้อผิดพลาดในการตรวจจับใบหน้า';
+          showStatus('เกิดข้อผิดพลาดในการตรวจจับใบหน้า', 'error');
         }
       };
+      
       cancelBtn.onclick = () => {
+        clearInterval(livenessInterval);
         if (stream) stream.getTracks().forEach(track => track.stop());
         document.body.removeChild(popup);
         resolve(null);
@@ -457,9 +589,26 @@ class QRScanner {
   }
 }
 
+// เพิ่มฟังก์ชันโหลดโมเดล face-api.js
+async function loadFaceApiModels() {
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri('models/'),
+      faceapi.nets.faceLandmark68Net.loadFromUri('models/'),
+      faceapi.nets.faceRecognitionNet.loadFromUri('models/'),
+      faceapi.nets.faceExpressionNet.loadFromUri('models/'),
+      faceapi.nets.ageGenderNet.loadFromUri('models/'),
+      // faceapi.nets.tinyYolov2.loadFromUri('models/'), // ลบบรรทัดนี้ออก
+    ]);
+  } catch (e) {
+    alert('เกิดข้อผิดพลาดในการโหลดโมเดล face-api.js: ' + e);
+  }
+}
+
 // Initialize scanner when page loads
 let scanner;
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadFaceApiModels(); // โหลดโมเดลให้เสร็จก่อน
   scanner = new QRScanner();
 });
 
