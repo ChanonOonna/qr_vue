@@ -38,6 +38,30 @@ router.get('/sessions/:id', requireTeacher, async (req, res) => {
   }
 });
 
+// Get QR session by token (for students to scan)
+router.get('/sessions/token/:token', async (req, res) => {
+  try {
+    const session = await QRCodeSession.getByToken(req.params.token);
+    
+    if (!session) {
+      return res.status(404).json({ error: 'QR session not found or expired' });
+    }
+    
+    // Check if session is still active
+    const now = new Date();
+    const expireTime = new Date(session.expire_time);
+    
+    if (now > expireTime) {
+      return res.status(400).json({ error: 'QR session has expired' });
+    }
+    
+    res.json({ session });
+  } catch (error) {
+    console.error('Error getting QR session by token:', error);
+    res.status(500).json({ error: 'Failed to get QR session' });
+  }
+});
+
 // Create new QR session
 router.post('/sessions', requireTeacher, async (req, res) => {
   function toMySQLDateTime(dt) {

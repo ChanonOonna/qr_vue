@@ -75,6 +75,27 @@ class Attendance {
     }
   }
 
+  static async getById(attendanceId) {
+    const query = `
+      SELECT 
+        sa.*,
+        s.firstname,
+        s.lastname,
+        s.student_code,
+        s.class_group
+      FROM student_attendance sa
+      JOIN students s ON sa.student_id = s.id
+      WHERE sa.id = ?
+    `;
+
+    try {
+      const [rows] = await pool.execute(query, [attendanceId]);
+      return rows[0];
+    } catch (error) {
+      throw new Error(`Failed to get attendance by id: ${error.message}`);
+    }
+  }
+
   static async getStatsByTeacher(teacherId) {
     const query = `
       SELECT 

@@ -50,7 +50,13 @@ router.put('/:attendanceId', requireTeacher, async (req, res) => {
     }
     
     await Attendance.updateScore(attendanceId, extra_score || 0, notes || '');
-    res.json({ message: 'Attendance updated successfully' });
+    
+    // Get updated record
+    const updatedRecord = await Attendance.getById(attendanceId);
+    res.json({ 
+      message: 'Attendance updated successfully',
+      record: updatedRecord
+    });
   } catch (error) {
     console.error('Error updating attendance:', error);
     res.status(500).json({ error: 'Failed to update attendance' });
@@ -70,6 +76,67 @@ router.get('/stats', requireTeacher, async (req, res) => {
   } catch (error) {
     console.error('Error getting attendance stats:', error);
     res.status(500).json({ error: 'Failed to get attendance statistics' });
+  }
+});
+
+// Validate student data before face verification
+router.post('/validate-student', async (req, res) => {
+  try {
+    const { qr_token, student_id, firstname, lastname } = req.body;
+    
+    if (!qr_token || !student_id || !firstname || !lastname) {
+      return res.status(400).json({ error: 'กรุณากรอกข้อมูลนิสิตให้ครบถ้วน' });
+    }
+    
+    // Get QR session by token
+    const session = await QRCodeSession.getByToken(qr_token);
+    if (!session) {
+      return res.status(404).json({ error: 'Invalid QR code or session expired' });
+    }
+    
+    // Check if session is still active
+    if (!session.is_active) {
+      return res.status(400).json({ error: 'QR session is no longer active' });
+    }
+    
+    // Check if session has expired
+    if (new Date() > new Date(session.expire_time)) {
+      return res.status(400).json({ error: 'QR session has expired' });
+    }
+    
+    // Check if student already checked in
+    const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, student_id, firstname, lastname);
+    if (existingAttendance) {
+      return res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
+    }
+    
+    // Check if student exists in face registration
+    const { pool } = require('../db');
+    const [faceRows] = await pool.execute(
+      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ? AND last_name = ?',
+      [student_id, firstname, lastname]
+    );
+    
+    if (faceRows.length === 0) {
+      return res.status(400).json({ 
+        error: 'ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า กรุณาติดต่ออาจารย์' 
+      });
+    }
+    
+    // Validation passed
+    res.json({ 
+      message: 'ข้อมูลนักเรียนถูกต้อง สามารถดำเนินการยืนยันใบหน้าได้',
+      session: session,
+      student: {
+        student_id,
+        firstname,
+        lastname
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error validating student data:', error);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล' });
   }
 });
 
@@ -104,7 +171,7 @@ router.post('/checkin', async (req, res) => {
       return res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
     }
     
-    // ตรวจสอบกับฐานข้อมูล studentface ก่อน
+    // ตรวจสอบกับฐานข้อมูล studentface
     const { pool } = require('../db');
     console.log('DEBUG FACE:', student_id, firstname, lastname);
     const [faceRows] = await pool.execute(
@@ -112,14 +179,25 @@ router.post('/checkin', async (req, res) => {
       [student_id, firstname, lastname]
     );
     if (faceRows.length === 0) {
-      return res.status(400).json({ error: 'ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า' });
+      return res.status(400).json({ error: 'ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า กรุณาลงทะเบียนที่หน้า /face-registration' });
     }
 
     // ตรวจสอบ face_descriptor ถ้ามีการส่งมา
     if (face_descriptor) {
       try {
         const newDescriptor = JSON.parse(face_descriptor);
+        
+        // Validate face descriptor format
+        if (!Array.isArray(newDescriptor) || newDescriptor.length !== 128) {
+          return res.status(400).json({ error: 'Invalid face descriptor format' });
+        }
+        
         const registeredDescriptor = JSON.parse(faceRows[0].face_descriptor);
+        
+        // Validate registered descriptor
+        if (!Array.isArray(registeredDescriptor) || registeredDescriptor.length !== 128) {
+          return res.status(400).json({ error: 'Invalid registered face descriptor format' });
+        }
         
         // ฟังก์ชันคำนวณ L2 distance
         const l2Distance = (a, b) => {
@@ -134,13 +212,43 @@ router.post('/checkin', async (req, res) => {
         const distance = l2Distance(newDescriptor, registeredDescriptor);
         console.log('Face distance:', distance);
         
-        if (distance > 0.5) { // threshold 0.5
+        const THRESHOLD = 0.5;
+        if (distance > THRESHOLD) {
           return res.status(400).json({ error: 'ใบหน้าที่สแกนไม่ตรงกับข้อมูลที่ลงทะเบียนไว้ กรุณาลองใหม่' });
         }
+        
+        // ตรวจสอบการใช้งานใบหน้าซ้ำกับรหัสอื่น
+        const [duplicateFaces] = await pool.execute(
+          'SELECT * FROM studentface WHERE student_id != ? AND face_descriptor IS NOT NULL',
+          [student_id]
+        );
+        
+        for (const row of duplicateFaces) {
+          if (!row.face_descriptor) continue;
+          
+          let dbDescriptor;
+          try {
+            dbDescriptor = JSON.parse(row.face_descriptor);
+          } catch (e) {
+            continue;
+          }
+          
+          if (!Array.isArray(dbDescriptor) || dbDescriptor.length !== newDescriptor.length) continue;
+          
+          const dist = l2Distance(newDescriptor, dbDescriptor);
+          if (dist < THRESHOLD) {
+            return res.status(400).json({ 
+              error: 'ใบหน้านี้ถูกใช้ลงทะเบียนไปแล้วกับรหัสอื่น' 
+            });
+          }
+        }
+        
       } catch (e) {
         console.error('Error comparing face descriptors:', e);
         return res.status(400).json({ error: 'เกิดข้อผิดพลาดในการตรวจสอบใบหน้า' });
       }
+    } else {
+      return res.status(400).json({ error: 'กรุณาสแกนใบหน้าเพื่อยืนยันตัวตน' });
     }
     
     // Determine status based on time

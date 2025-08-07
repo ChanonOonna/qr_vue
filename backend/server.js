@@ -5,6 +5,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 
+// Environment variables
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
 // Import modules
 const { passport, requireAuth, requireTeacher, requireTeacherCode } = require('./auth');
 const { testConnection, initDatabase } = require('./db');
@@ -20,7 +24,7 @@ const PORT = 3000;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5500', 'http://127.0.0.1:5500'],
+  origin: [BACKEND_URL, FRONTEND_URL, 'http://localhost:5500', 'http://127.0.0.1:5500'],
   credentials: true
 }));
 
@@ -51,13 +55,8 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Serve static files from frontend
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// Routes
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
+// API-only server - Vue.js frontend runs separately on port 3001
+// Backend serves only API endpoints, no static files
 
 // Auth routes
 app.get('/login', passport.authenticate('auth0', {
@@ -66,15 +65,15 @@ app.get('/login', passport.authenticate('auth0', {
 
 app.get('/callback', 
   passport.authenticate('auth0', { 
-    failureRedirect: '/login',
+    failureRedirect: `${FRONTEND_URL}/`,
     failureFlash: true 
   }),
   (req, res) => {
     // Check if teacher has teacher_code
     if (req.user && req.user.teacher_code) {
-    res.redirect('/dashboard');
+      res.redirect(`${FRONTEND_URL}/dashboard`);
     } else {
-      res.redirect('/setup-teacher-code');
+      res.redirect(`${FRONTEND_URL}/teacher-setup`);
     }
   }
 );
@@ -84,29 +83,12 @@ app.get('/logout', (req, res) => {
     if (err) {
       console.error('Logout error:', err);
     }
-    res.redirect('/');
+    res.redirect(`${FRONTEND_URL}/`);
   });
 });
 
-// Setup Teacher Code page
-app.get('/setup-teacher-code', requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/setup-teacher-code.html'));
-});
-
-// Protected route - Dashboard (requires teacher code)
-app.get('/dashboard', requireTeacherCode, (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/dashboard.html'));
-});
-
-// Public route - Scan QR Code
-app.get('/scan', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/scan.html'));
-});
-
-// Public route - Register Face
-app.get('/foraddface', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/foraddface.html'));
-});
+// Vue.js handles all frontend routes - these are now handled by Vue Router
+// Backend only serves API endpoints
 
 // API routes
 app.get('/api/user', requireAuth, (req, res) => {
