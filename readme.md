@@ -1,176 +1,249 @@
-# ระบบเช็คชื่อด้วย QR Code
+# QR Attendance System
 
-ระบบเช็คชื่ออัจฉริยะสำหรับครูและนักเรียน ใช้ QR Code ในการเช็คชื่อเข้าชั้นเรียน
+ระบบเช็คชื่อด้วย QR Code และ Face Recognition สำหรับมหาวิทยาลัย
 
-## ✨ ฟีเจอร์หลัก
+## 🚀 Features
 
-### สำหรับครู (Dashboard)
-- 🔐 **การเข้าสู่ระบบด้วย Auth0** - ใช้ Google Account (@ku.th)
-- 📱 **สร้าง QR Code** - สร้าง QR Code สำหรับเช็คชื่อในแต่ละวิชา
-- 📋 **รายการ QR Code** - ดูรายการ QR Code ทั้งหมดที่สร้างไว้
-- 👥 **ข้อมูลการเช็คชื่อ** - ดูรายละเอียดการเช็คชื่อของนักเรียนแต่ละคน
-- 📊 **สถิติการเช็คชื่อ** - ดูสถิติการมาเรียน สาย ขาด
-- ✏️ **ให้คะแนนเพิ่มเติม** - ให้คะแนนเพิ่มเติมและหมายเหตุสำหรับนักเรียน
-- 📥 **Export ข้อมูล** - ดาวน์โหลดข้อมูลการเช็คชื่อเป็น CSV
+- **QR Code Generation** - สร้าง QR Code สำหรับเช็คชื่อ
+- **Face Recognition** - ยืนยันตัวตนด้วยใบหน้า
+- **Liveness Detection** - ตรวจจับการเคลื่อนไหว (ขยับหัว, กระพริบตา, ยิ้ม)
+- **Real-time Attendance** - เช็คชื่อแบบ Real-time
+- **Excel Export** - ส่งออกข้อมูลเป็น Excel
+- **Teacher Dashboard** - แดชบอร์ดสำหรับอาจารย์
 
-### สำหรับนักเรียน (Scan)
-- 📱 **สแกน QR Code** - สแกน QR Code เพื่อเช็คชื่อ
-- ⌨️ **กรอกข้อมูลเอง** - กรอก QR Token เองหากไม่สามารถสแกนได้
-- ✅ **ตรวจสอบสถานะ** - ดูสถานะการเช็คชื่อ (มา/สาย/ขาด)
+## 🛠️ Tech Stack
 
-## 🚀 การติดตั้ง
+### Frontend
+- **Vue 3** (Composition API)
+- **Vite** (Build Tool)
+- **Vue Router 4** (Routing)
+- **Pinia** (State Management)
+- **Axios** (HTTP Client)
+- **face-api.js** (Face Recognition)
+- **jsQR** (QR Code Scanning)
+- **qrcode** (QR Code Generation)
 
-### 1. ติดตั้ง Dependencies
+### Backend
+- **Node.js** + **Express**
+- **MySQL** (Database)
+- **Auth0** (Authentication)
+- **Multer** (File Upload)
 
+## 📋 Prerequisites
+
+- Node.js 16+ 
+- MySQL 8.0+
+- Auth0 Account
+
+## 🚀 Quick Start
+
+### 1. Clone Repository
 ```bash
+git clone <repository-url>
+cd qrcode
+```
+
+### 2. Install Dependencies
+```bash
+# Install root dependencies
+npm install
+
+# Install backend dependencies
 cd backend
+npm install
+
+# Install frontend dependencies
+cd ../frontend-vue
 npm install
 ```
 
-### 2. ตั้งค่าฐานข้อมูล
+### 3. Setup Database
+```bash
+# Import database schema
+mysql -u root -p < sql/now.sql
 
-1. สร้างฐานข้อมูล MySQL ชื่อ `qrcheck`
-2. รันไฟล์ `sql/qrcheck.sql` เพื่อสร้างตาราง
-3. แก้ไขการตั้งค่าฐานข้อมูลใน `backend/db.js`
+# Import sample data (optional)
+mysql -u root -p < sql/sample_data.sql
+```
 
-### 3. ตั้งค่า Auth0
+### 4. Download Face API Models
 
-1. สร้าง Auth0 Application
-2. ตั้งค่า Allowed Callback URLs: `http://localhost:3000/callback`
-3. ตั้งค่า Allowed Logout URLs: `http://localhost:3000`
-4. แก้ไขการตั้งค่าใน `backend/auth.js`
-
-### 4. รันเซิร์ฟเวอร์
+**สำคัญ**: ต้อง download face-api.js models ก่อนใช้งาน
 
 ```bash
-cd backend
-npm start
+# สร้างโฟลเดอร์ models
+mkdir -p frontend-vue/public/models
+
+# Download models จาก face-api.js
+cd frontend-vue/public/models
+
+# Download required models
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/tiny_face_detector_model-shard1
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/tiny_face_detector_model-weights_manifest.json
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_landmark_68_model-shard1
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_landmark_68_model-weights_manifest.json
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_expression_model-shard1
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_expression_model-weights_manifest.json
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_recognition_model-shard1
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_recognition_model-shard2
+curl -O https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/face_recognition_model-weights_manifest.json
 ```
 
-## 📁 โครงสร้างไฟล์
-
-```
-infoproject/
-├── backend/
-│   ├── models/
-│   │   ├── attendance.js      # Model การเช็คชื่อ
-│   │   ├── qrcodeSession.js   # Model QR Code sessions
-│   │   ├── student.js         # Model นักเรียน
-│   │   └── user.js           # Model ผู้ใช้ (ครู)
-│   ├── routes/
-│   │   ├── attendance.js      # API การเช็คชื่อ
-│   │   ├── qrcode.js         # API QR Code
-│   │   └── users.js          # API นักเรียน
-│   ├── auth.js               # การยืนยันตัวตน
-│   ├── db.js                 # การเชื่อมต่อฐานข้อมูล
-│   ├── server.js             # เซิร์ฟเวอร์หลัก
-│   └── package.json
-├── frontend/
-│   ├── css/
-│   │   └── style.css         # สไตล์ CSS
-│   ├── js/
-│   │   ├── auth.js           # การยืนยันตัวตน (Frontend)
-│   │   ├── dashboard.js      # Dashboard สำหรับครู
-│   │   └── scan.js           # หน้า Scan สำหรับนักเรียน
-│   ├── dashboard.html        # หน้า Dashboard
-│   ├── index.html            # หน้า Login
-│   └── scan.html             # หน้า Scan QR Code
-└── sql/
-    └── qrcheck.sql           # โครงสร้างฐานข้อมูล
+**หรือใช้ script อัตโนมัติ**:
+```bash
+# รัน script download models
+cd frontend-vue
+npm run download-models
 ```
 
-## 🔧 การใช้งาน
+### 5. Environment Configuration
 
-### สำหรับครู
+#### Backend (.env)
+```env
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=qr_attendance
 
-1. **เข้าสู่ระบบ**
-   - ไปที่ `http://localhost:3000`
-   - คลิก "เข้าสู่ระบบด้วย Google"
-   - ใช้ Google Account ที่มี domain @ku.th
+AUTH0_DOMAIN=your_auth0_domain
+AUTH0_CLIENT_ID=your_auth0_client_id
+AUTH0_CLIENT_SECRET=your_auth0_client_secret
+AUTH0_CALLBACK_URL=http://localhost:3000/callback
 
-2. **สร้าง QR Code**
-   - คลิก "สร้าง QR Code ใหม่"
-   - กรอกข้อมูลวิชา เวลา และการตั้งค่า
-   - คลิก "สร้าง QR Code"
-   - แสดง QR Code ให้นักเรียนสแกน
+FRONTEND_URL=http://localhost:3001
+BACKEND_URL=http://localhost:3000
+```
 
-3. **ดูรายการ QR Code**
-   - หน้า Dashboard จะแสดงรายการ QR Code ทั้งหมด
-   - คลิกที่ QR Code เพื่อดูรายละเอียด
+#### Frontend (.env)
+```env
+VITE_FRONTEND_URL=http://localhost:3001
+VITE_BACKEND_URL=http://localhost:3000
+```
 
-4. **จัดการการเช็คชื่อ**
-   - ดูรายการนักเรียนที่เช็คชื่อ
-   - ให้คะแนนเพิ่มเติมและหมายเหตุ
-   - Export ข้อมูลเป็น CSV
-
-### สำหรับนักเรียน
-
-1. **เข้าสู่หน้า Scan**
-   - ไปที่ `http://localhost:3000/scan`
-
-2. **กรอกข้อมูล**
-   - กรอกรหัสนักเรียน
-   - กรอกชื่อ-นามสกุล
-
-3. **สแกน QR Code**
-   - คลิก "เริ่มสแกน QR Code"
-   - อนุญาตการเข้าถึงกล้อง
-   - สแกน QR Code ที่ครูแสดง
-
-4. **หรือกรอก QR Token เอง**
-   - กรอก QR Token ที่ครูให้
-   - คลิก "ส่ง"
-
-## 📊 โครงสร้างฐานข้อมูล
-
-### ตารางหลัก
-- **teachers** - ข้อมูลครู
-- **students** - ข้อมูลนักเรียน
-- **qr_sessions** - ข้อมูล QR Code sessions
-- **student_attendance** - ข้อมูลการเช็คชื่อ
-
-### ความสัมพันธ์
-- ครู 1 คน สามารถสร้าง QR Code ได้หลายอัน
-- QR Code 1 อัน สามารถมีนักเรียนเช็คชื่อได้หลายคน
-- นักเรียน 1 คน สามารถเช็คชื่อใน QR Code 1 อันได้ 1 ครั้ง
-
-## 🔒 ความปลอดภัย
-
-- **Authentication** - ใช้ Auth0 สำหรับการยืนยันตัวตน
-- **Authorization** - ครูสามารถเข้าถึงเฉพาะข้อมูลของตัวเอง
-- **Session Management** - ใช้ Express Session
-- **Rate Limiting** - จำกัดจำนวน request
-- **CORS** - ตั้งค่า CORS สำหรับความปลอดภัย
-
-## 🛠️ การพัฒนา
-
-### การเพิ่มฟีเจอร์ใหม่
-
-1. **เพิ่ม Model** - สร้างไฟล์ใน `backend/models/`
-2. **เพิ่ม Route** - สร้างไฟล์ใน `backend/routes/`
-3. **เพิ่ม Frontend** - สร้างไฟล์ใน `frontend/`
-4. **อัปเดต Database** - แก้ไข `sql/qrcheck.sql`
-
-### การ Debug
+### 6. Start Development Servers
 
 ```bash
-# ดู logs ของเซิร์ฟเวอร์
+# Start both frontend and backend
 npm run dev
 
-# ดู logs ของฐานข้อมูล
-# ตรวจสอบการเชื่อมต่อใน db.js
+# หรือแยกกัน
+npm run dev:backend  # Backend on port 3000
+npm run dev:frontend # Frontend on port 3001
 ```
 
-## 📝 หมายเหตุ
+## 📁 Project Structure
 
-- ระบบนี้เป็น prototype สำหรับการใช้งานจริง
-- ควรเพิ่ม QR Code detection library เช่น jsQR หรือ ZXing
-- ควรเพิ่มการ validate ข้อมูลที่เข้มงวดมากขึ้น
-- ควรเพิ่มระบบ backup และ recovery
-- ควรเพิ่มการ monitor และ logging
+```
+qrcode/
+├── backend/                 # Node.js + Express API
+│   ├── routes/             # API routes
+│   ├── models/             # Database models
+│   └── server.js           # Main server file
+├── frontend-vue/           # Vue 3 Frontend
+│   ├── src/
+│   │   ├── components/     # Vue components
+│   │   ├── views/          # Page components
+│   │   ├── services/       # API services
+│   │   ├── stores/         # Pinia stores
+│   │   └── utils/          # Utility functions
+│   ├── public/
+│   │   ├── models/         # Face API models
+│   │   └── js/             # External libraries
+│   └── vite.config.js      # Vite configuration
+├── sql/                    # Database scripts
+└── package.json            # Root package.json
+```
 
-## 🤝 การสนับสนุน
+## 🔧 Development
 
-หากมีปัญหาหรือต้องการความช่วยเหลือ กรุณาติดต่อทีมพัฒนา
-#   q r _ v u e  
- 
+### Available Scripts
+
+```bash
+# Root level
+npm run dev              # Start both servers
+npm run dev:backend      # Start backend only
+npm run dev:frontend     # Start frontend only
+npm run install:all      # Install all dependencies
+
+# Backend
+cd backend
+npm run dev              # Start with nodemon
+npm run start            # Start production
+
+# Frontend
+cd frontend-vue
+npm run dev              # Start development server
+npm run build            # Build for production
+npm run preview          # Preview build
+```
+
+### Auto-restart Configuration
+
+- **Backend**: ใช้ `nodemon` สำหรับ auto-restart
+- **Frontend**: ใช้ `vite` สำหรับ hot-reload
+
+## 🎯 Usage
+
+### สำหรับอาจารย์
+1. **Login** ด้วย Auth0
+2. **สร้าง QR Code** สำหรับเช็คชื่อ
+3. **ดูสถิติ** การเช็คชื่อ
+4. **ส่งออกข้อมูล** เป็น Excel
+
+### สำหรับนักเรียน
+1. **สแกน QR Code** หรือกรอก Token
+2. **กรอกข้อมูล** นักเรียน
+3. **ยืนยันใบหน้า** ด้วย Liveness Detection
+4. **เช็คชื่อสำเร็จ**
+
+## 🔒 Security Features
+
+- **Face Recognition** - L2 Distance Threshold (0.5)
+- **Liveness Detection** - ป้องกันการใช้รูปภาพ
+- **Duplicate Prevention** - ป้องกันการเช็คชื่อซ้ำ
+- **Teacher Authentication** - ใช้ Auth0
+- **Session Validation** - ตรวจสอบ QR Session
+
+## 🐛 Troubleshooting
+
+### Face API Models ไม่โหลด
+```bash
+# ตรวจสอบว่า models อยู่ในตำแหน่งที่ถูกต้อง
+ls frontend-vue/public/models/
+
+# ควรมีไฟล์เหล่านี้:
+# - tiny_face_detector_model-shard1
+# - face_landmark_68_model-shard1
+# - face_expression_model-shard1
+# - face_recognition_model-shard1
+# - face_recognition_model-shard2
+```
+
+### WebGL Error
+- ระบบจะใช้ CPU backend แทน WebGL
+- ไม่มีผลต่อการทำงาน
+
+### Database Connection Error
+```bash
+# ตรวจสอบ MySQL service
+sudo service mysql status
+
+# ตรวจสอบ connection string
+cat backend/.env
+```
+
+## 📝 License
+
+MIT License
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch
+3. Commit changes
+4. Push to branch
+5. Create Pull Request
+
+## 📞 Support
+
+หากมีปัญหาหรือคำถาม กรุณาสร้าง Issue ใน GitHub repository
