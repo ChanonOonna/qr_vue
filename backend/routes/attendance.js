@@ -140,6 +140,59 @@ router.post('/validate-student', async (req, res) => {
   }
 });
 
+// Check if student already exists in face registration
+router.post('/student/check', async (req, res) => {
+  try {
+    const { student_code, firstname, lastname } = req.body;
+    
+    // Validate required fields
+    if (!student_code || !firstname || !lastname) {
+      return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+    }
+    
+    // Validate student code format (10 digits)
+    if (!/^\d{10}$/.test(student_code)) {
+      return res.status(400).json({ error: 'รหัสนิสิตต้องเป็นตัวเลข 10 หลัก' });
+    }
+    
+    // Check if student already exists in studentface table
+    const { pool } = require('../db');
+    
+    // First check if student code already exists (regardless of name)
+    const [existingCodeRows] = await pool.execute(
+      'SELECT * FROM studentface WHERE student_id = ?',
+      [student_code]
+    );
+    
+    if (existingCodeRows.length > 0) {
+      return res.status(400).json({ 
+        error: 'รหัสนิสิตนี้ถูกใช้ลงทะเบียนไปแล้ว กรุณาใช้รหัสนิสิตอื่น' 
+      });
+    }
+    
+    // Then check if the same name combination already exists
+    const [existingNameRows] = await pool.execute(
+      'SELECT * FROM studentface WHERE first_name = ? AND last_name = ?',
+      [firstname, lastname]
+    );
+    
+    if (existingNameRows.length > 0) {
+      return res.status(400).json({ 
+        error: 'ชื่อและนามสกุลนี้ถูกใช้ลงทะเบียนไปแล้ว กรุณาใช้ชื่ออื่น' 
+      });
+    }
+    
+    res.json({ 
+      exists: false, 
+      message: 'สามารถลงทะเบียนใบหน้าได้' 
+    });
+    
+  } catch (error) {
+    console.error('Error checking student existence:', error);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล' });
+  }
+});
+
 // Student check-in (for QR scanning)
 router.post('/checkin', async (req, res) => {
   try {
@@ -329,52 +382,71 @@ router.post('/checkin', async (req, res) => {
 
 // ลงทะเบียนใบหน้านักเรียน (ป้องกันซ้ำ)
 router.post('/student/register', async (req, res) => {
+  console.log('Received registration request:', req.body)
+  
   const { student_id, first_name, last_name, face_descriptor } = req.body;
   if (!student_id || !first_name || !last_name || !face_descriptor) {
+    console.log('Missing required fields:', { student_id, first_name, last_name, face_descriptor: !!face_descriptor })
     return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบ' });
   }
+  
   try {
     const { pool } = require('../db');
+    
     // 1. เช็ค student_id ซ้ำ (เหมือนเดิม)
     const [rows] = await pool.execute('SELECT * FROM studentface WHERE student_id = ?', [student_id]);
     if (rows.length > 0) {
+      console.log('Student already exists:', student_id)
       return res.status(400).json({ success: false, message: 'นักเรียนคนนี้ลงทะเบียนไปแล้ว' });
     }
 
-    // 2. ดึง face_descriptor ทั้งหมด
-    const [faceRows] = await pool.execute('SELECT student_id, face_descriptor FROM studentface');
-    const newDescriptor = JSON.parse(face_descriptor);
+    // 2. เช็คชื่อและนามสกุลซ้ำ
+    const [nameRows] = await pool.execute('SELECT * FROM studentface WHERE first_name = ? AND last_name = ?', [first_name, last_name]);
+    if (nameRows.length > 0) {
+      console.log('Name combination already exists:', first_name, last_name)
+      return res.status(400).json({ success: false, message: 'ชื่อและนามสกุลนี้ถูกใช้ลงทะเบียนไปแล้ว' });
+    }
 
-    // 3. ฟังก์ชันคำนวณ L2 distance
-    const l2Distance = (a, b) => {
-      let sum = 0;
-      for (let i = 0; i < a.length; i++) {
-        sum += (a[i] - b[i]) ** 2;
-      }
-      return Math.sqrt(sum);
-    };
+    // 3. เช็คใบหน้าซ้ำ (เฉพาะเมื่อมีข้อมูลใน DB)
+    const [faceRows] = await pool.execute('SELECT student_id, face_descriptor FROM studentface WHERE face_descriptor IS NOT NULL');
+    
+    if (faceRows.length > 0) {
+      const newDescriptor = JSON.parse(face_descriptor);
+      console.log('Checking against', faceRows.length, 'existing faces')
+      
+      // ฟังก์ชันคำนวณ L2 distance
+      const l2Distance = (a, b) => {
+        let sum = 0;
+        for (let i = 0; i < a.length; i++) {
+          sum += (a[i] - b[i]) ** 2;
+        }
+        return Math.sqrt(sum);
+      };
 
-    // 4. เปรียบเทียบกับทุก descriptor ใน DB
-    for (const row of faceRows) {
-      if (!row.face_descriptor) continue;
-      let dbDescriptor;
-      try {
-        dbDescriptor = JSON.parse(row.face_descriptor);
-      } catch (e) {
-        continue;
-      }
-      if (!Array.isArray(dbDescriptor) || dbDescriptor.length !== newDescriptor.length) continue;
-      const dist = l2Distance(newDescriptor, dbDescriptor);
-      if (dist < 0.5) { // threshold 0.5 (ปรับได้)
-        return res.status(400).json({ success: false, message: 'ใบหน้านี้ถูกใช้ลงทะเบียนไปแล้วกับรหัสอื่น' });
+      // เปรียบเทียบกับทุก descriptor ใน DB
+      for (const row of faceRows) {
+        if (!row.face_descriptor) continue;
+        let dbDescriptor;
+        try {
+          dbDescriptor = JSON.parse(row.face_descriptor);
+        } catch (e) {
+          continue;
+        }
+        if (!Array.isArray(dbDescriptor) || dbDescriptor.length !== newDescriptor.length) continue;
+        const dist = l2Distance(newDescriptor, dbDescriptor);
+        if (dist < 0.5) { // threshold 0.5
+          console.log('Duplicate face detected, distance:', dist, 'for student:', row.student_id)
+          return res.status(400).json({ success: false, message: 'ใบหน้านี้ถูกใช้ลงทะเบียนไปแล้วกับรหัสอื่น' });
+        }
       }
     }
 
-    // 5. ถ้าไม่ซ้ำ ให้ insert
+    // 4. ถ้าไม่ซ้ำ ให้ insert
     await pool.execute(
       'INSERT INTO studentface (student_id, first_name, last_name, face_descriptor) VALUES (?, ?, ?, ?)',
       [student_id, first_name, last_name, face_descriptor]
     );
+    console.log('Registration successful for student:', student_id)
     res.json({ success: true, message: 'ลงทะเบียนสำเร็จ' });
   } catch (error) {
     console.error('Error in /student/register:', error);

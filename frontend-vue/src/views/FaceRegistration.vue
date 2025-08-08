@@ -18,8 +18,12 @@
                 type="text" 
                 id="studentCode" 
                 required 
-                placeholder="กรอกรหัสนิสิต"
+                placeholder="กรอกรหัสนิสิต 10 หลัก"
+                :class="{ 'error': studentCodeError }"
               >
+              <div v-if="studentCodeError" class="error-message">
+                {{ studentCodeError }}
+              </div>
             </div>
             <div class="form-row">
               <div class="form-group">
@@ -48,10 +52,11 @@
 
         <!-- Camera Section -->
         <div class="camera-section">
-          <h3>ถ่ายภาพใบหน้า</h3>
+          <h3>ตรวจจับใบหน้า</h3>
           <div class="camera-container" ref="cameraContainer">
             <video ref="video" autoplay playsinline></video>
             <canvas ref="canvas" style="display: none;"></canvas>
+            <canvas ref="overlay" class="face-overlay"></canvas>
             <div class="camera-overlay">
               <div class="face-frame"></div>
             </div>
@@ -60,17 +65,17 @@
           <div class="camera-controls">
             <button 
               @click="startCamera" 
-              :disabled="isCameraActive || loading"
+              :disabled="!isFormValid || isCameraActive || loading"
               class="btn btn-primary"
             >
               📷 เปิดกล้อง
             </button>
             <button 
-              @click="captureFace" 
-              :disabled="!isCameraActive || loading"
+              @click="registerFace" 
+              :disabled="!isCameraActive || !isFaceDetected || loading"
               class="btn btn-success"
             >
-              📸 ถ่ายภาพ
+              🎯 ลงทะเบียนใบหน้า
             </button>
             <button 
               @click="stopCamera" 
@@ -80,28 +85,22 @@
               ⏹️ ปิดกล้อง
             </button>
           </div>
-        </div>
-
-        <!-- Captured Image -->
-        <div v-if="capturedImage" class="captured-image-section">
-          <h3>ภาพที่ถ่าย</h3>
-          <div class="captured-image">
-            <img :src="capturedImage" alt="Captured face" />
+          
+          <!-- Face Detection Status -->
+          <div v-if="isCameraActive" class="face-status">
+            <div v-if="isFaceDetected" class="status-success">
+              ✅ ตรวจพบใบหน้า - พร้อมลงทะเบียน
+            </div>
+            <div v-else class="status-waiting">
+              🔍 กำลังตรวจจับใบหน้า...
+            </div>
           </div>
-          <button @click="retakePhoto" class="btn btn-secondary">
-            📷 ถ่ายใหม่
-          </button>
-        </div>
-
-        <!-- Submit Button -->
-        <div v-if="capturedImage" class="submit-section">
-          <button 
-            @click="registerFace" 
-            :disabled="loading"
-            class="btn btn-primary btn-large"
-          >
-            🎯 ลงทะเบียนใบหน้า
-          </button>
+          
+          <!-- Registration Progress -->
+          <div v-if="loading" class="registration-progress">
+            <div class="progress-spinner"></div>
+            <p>{{ resultMessage }}</p>
+          </div>
         </div>
 
         <!-- Result Message -->
@@ -120,7 +119,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { faceService } from '../services/face'
 import { showNotification } from '../utils/helpers'
 
@@ -129,14 +128,16 @@ export default {
   setup() {
     const video = ref(null)
     const canvas = ref(null)
+    const overlay = ref(null)
     const cameraContainer = ref(null)
     const isCameraActive = ref(false)
+    const isFaceDetected = ref(false)
     const loading = ref(false)
-    const capturedImage = ref('')
     const resultMessage = ref('')
     const resultClass = ref('')
     
     let stream = null
+    let faceDetectionInterval = null
 
     const studentForm = reactive({
       student_code: '',
@@ -144,8 +145,48 @@ export default {
       lastname: ''
     })
 
+    // Check if form is valid
+    const isFormValid = computed(() => {
+      const hasStudentCode = studentForm.student_code.trim()
+      const hasFirstName = studentForm.firstname.trim()
+      const hasLastName = studentForm.lastname.trim()
+      const isValidStudentCode = /^\d{10}$/.test(studentForm.student_code.trim())
+      
+      return hasStudentCode && hasFirstName && hasLastName && isValidStudentCode
+    })
+
+    // Student code validation error
+    const studentCodeError = computed(() => {
+      const code = studentForm.student_code.trim()
+      if (!code) return ''
+      if (!/^\d{10}$/.test(code)) {
+        return 'รหัสนิสิตต้องเป็นตัวเลข 10 หลัก'
+      }
+      return ''
+    })
+
     const startCamera = async () => {
+      if (!isFormValid.value) {
+        resultMessage.value = 'กรุณากรอกข้อมูลให้ครบก่อนเปิดกล้อง'
+        resultClass.value = 'result-error'
+        return
+      }
+
       try {
+        // Check if student already exists
+        loading.value = true
+        resultMessage.value = 'กำลังตรวจสอบข้อมูล...'
+        resultClass.value = ''
+        
+        await faceService.checkStudentExists({
+          student_code: studentForm.student_code,
+          firstname: studentForm.firstname,
+          lastname: studentForm.lastname
+        })
+        
+        // If we get here, student doesn't exist (backend returns error if exists)
+        
+        // If student doesn't exist, proceed with camera
         stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: 'user',
@@ -159,17 +200,34 @@ export default {
         }
         
         isCameraActive.value = true
+        isFaceDetected.value = false
         resultMessage.value = ''
+        
+        // Start face detection
+        startFaceDetection()
         
       } catch (error) {
         console.error('Failed to start camera:', error)
-        resultMessage.value = 'ไม่สามารถเข้าถึงกล้องได้'
+        // Handle backend validation errors
+        if (error.response?.data?.error) {
+          resultMessage.value = error.response.data.error
+        } else {
+          resultMessage.value = error.message || 'ไม่สามารถเข้าถึงกล้องได้'
+        }
         resultClass.value = 'result-error'
+      } finally {
+        loading.value = false
       }
     }
 
     const stopCamera = () => {
       isCameraActive.value = false
+      isFaceDetected.value = false
+      
+      if (faceDetectionInterval) {
+        clearInterval(faceDetectionInterval)
+        faceDetectionInterval = null
+      }
       
       if (stream) {
         stream.getTracks().forEach(track => track.stop())
@@ -179,28 +237,93 @@ export default {
       if (video.value) {
         video.value.srcObject = null
       }
+      
+      // Clear overlay
+      if (overlay.value) {
+        const ctx = overlay.value.getContext('2d')
+        ctx.clearRect(0, 0, overlay.value.width, overlay.value.height)
+      }
     }
 
-    const captureFace = () => {
-      if (!video.value || !canvas.value) return
+    const startFaceDetection = () => {
+      if (!video.value || !overlay.value) return
       
-      const context = canvas.value.getContext('2d')
-      canvas.value.width = video.value.videoWidth
-      canvas.value.height = video.value.videoHeight
+      // Set canvas size
+      overlay.value.width = video.value.videoWidth || 640
+      overlay.value.height = video.value.videoHeight || 480
       
-      context.drawImage(video.value, 0, 0, canvas.value.width, canvas.value.height)
+      let lastDetectionTime = 0
+      const detectionInterval = 300 // เพิ่มเป็น 300ms เพื่อลดการประมวลผล
+      let detectionCount = 0
       
-      capturedImage.value = canvas.value.toDataURL('image/jpeg', 0.8)
+      faceDetectionInterval = setInterval(async () => {
+        if (!video.value || !overlay.value || !isCameraActive.value) return
+        
+        const now = Date.now()
+        if (now - lastDetectionTime < detectionInterval) return
+        lastDetectionTime = now
+        
+        detectionCount++
+        
+        try {
+          // ใช้ TinyFaceDetectorOptions ที่เร็วขึ้น
+          const detection = await faceapi.detectSingleFace(
+            video.value, 
+            new faceapi.TinyFaceDetectorOptions({
+              inputSize: 224, // ลดขนาด input
+              scoreThreshold: 0.5 // เพิ่ม threshold
+            })
+          ).withFaceLandmarks().withFaceDescriptor()
+          
+          if (detection) {
+            isFaceDetected.value = true
+            drawFaceFrame(detection)
+          } else {
+            isFaceDetected.value = false
+            clearFaceFrame()
+          }
+        } catch (error) {
+          console.error('Face detection error:', error)
+          isFaceDetected.value = false
+          clearFaceFrame()
+        }
+      }, detectionInterval)
     }
 
-    const retakePhoto = () => {
-      capturedImage.value = ''
-      resultMessage.value = ''
+    const drawFaceFrame = (detection) => {
+      if (!overlay.value) return
+      
+      const ctx = overlay.value.getContext('2d')
+      ctx.clearRect(0, 0, overlay.value.width, overlay.value.height)
+      
+      const { box } = detection.detection
+      ctx.strokeStyle = '#00ff00'
+      ctx.lineWidth = 3
+      ctx.strokeRect(box.x, box.y, box.width, box.height)
+      
+      // Draw status text
+      ctx.fillStyle = '#00ff00'
+      ctx.font = '16px Arial'
+      ctx.fillText('✅ ตรวจพบใบหน้า', 10, 30)
+    }
+
+    const clearFaceFrame = () => {
+      if (!overlay.value) return
+      
+      const ctx = overlay.value.getContext('2d')
+      ctx.clearRect(0, 0, overlay.value.width, overlay.value.height)
     }
 
     const validateForm = () => {
       if (!studentForm.student_code.trim()) {
         resultMessage.value = 'กรุณากรอกรหัสนิสิต'
+        resultClass.value = 'result-error'
+        return false
+      }
+      
+      // Validate student code format (10 digits)
+      if (!/^\d{10}$/.test(studentForm.student_code.trim())) {
+        resultMessage.value = 'รหัสนิสิตต้องเป็นตัวเลข 10 หลัก'
         resultClass.value = 'result-error'
         return false
       }
@@ -217,8 +340,8 @@ export default {
         return false
       }
       
-      if (!capturedImage.value) {
-        resultMessage.value = 'กรุณาถ่ายภาพใบหน้า'
+      if (!isFaceDetected.value) {
+        resultMessage.value = 'กรุณาวางใบหน้าในกรอบกล้อง'
         resultClass.value = 'result-error'
         return false
       }
@@ -233,15 +356,51 @@ export default {
         loading.value = true
         resultMessage.value = ''
         
-        // Convert base64 image to blob
-        const response = await fetch(capturedImage.value)
-        const blob = await response.blob()
+        // Check if face is currently detected
+        if (!isFaceDetected.value) {
+          throw new Error('กรุณาวางใบหน้าในกรอบกล้องให้ชัดเจน')
+        }
+        
+        // Capture current frame for face descriptor
+        if (!video.value || !canvas.value) {
+          throw new Error('ไม่สามารถเข้าถึงกล้องได้')
+        }
+        
+        const context = canvas.value.getContext('2d')
+        canvas.value.width = video.value.videoWidth
+        canvas.value.height = video.value.videoHeight
+        context.drawImage(video.value, 0, 0, canvas.value.width, canvas.value.height)
+        
+        // ใช้ข้อมูลจาก face detection ที่มีอยู่แล้ว
+        console.log('Using existing face detection for registration...')
+        
+        // ใช้ TinyFaceDetectorOptions ที่เร็วขึ้นสำหรับการลงทะเบียน
+        const detection = await faceapi.detectSingleFace(
+          video.value, 
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 224,
+            scoreThreshold: 0.5
+          })
+        ).withFaceLandmarks().withFaceDescriptor()
+        
+        if (!detection) {
+          throw new Error('ไม่พบใบหน้า กรุณาวางใบหน้าในกรอบกล้องให้ชัดเจนและลองใหม่อีกครั้ง')
+        }
+        
+        // Validate face descriptor
+        if (!detection.descriptor || detection.descriptor.length !== 128) {
+          throw new Error('ข้อมูลใบหน้าไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง')
+        }
+        
+        console.log('Face descriptor length:', detection.descriptor.length)
+        
+        resultMessage.value = 'กำลังลงทะเบียนใบหน้า...'
         
         const formData = new FormData()
-        formData.append('student_code', studentForm.student_code)
-        formData.append('firstname', studentForm.firstname)
-        formData.append('lastname', studentForm.lastname)
-        formData.append('face_image', blob, 'face.jpg')
+        formData.append('student_id', studentForm.student_code)
+        formData.append('first_name', studentForm.firstname)
+        formData.append('last_name', studentForm.lastname)
+        formData.append('face_descriptor', JSON.stringify(Array.from(detection.descriptor)))
         
         await faceService.registerFace(formData)
         
@@ -254,13 +413,22 @@ export default {
           firstname: '',
           lastname: ''
         })
-        capturedImage.value = ''
+        
+        // Stop camera
+        stopCamera()
         
         showNotification('ลงทะเบียนใบหน้าสำเร็จ', 'success')
         
       } catch (error) {
         console.error('Failed to register face:', error)
-        resultMessage.value = error.message || 'เกิดข้อผิดพลาดในการลงทะเบียนใบหน้า'
+        // Handle backend validation errors
+        if (error.response?.data?.message) {
+          resultMessage.value = error.response.data.message
+        } else if (error.response?.data?.error) {
+          resultMessage.value = error.response.data.error
+        } else {
+          resultMessage.value = error.message || 'เกิดข้อผิดพลาดในการลงทะเบียนใบหน้า'
+        }
         resultClass.value = 'result-error'
       } finally {
         loading.value = false
@@ -279,20 +447,31 @@ export default {
           const script = document.createElement('script')
           script.src = '/js/face-api.min.js'
           script.onload = () => {
-            // Set face-api to use CPU backend instead of WebGL
-            if (typeof faceapi !== 'undefined') {
-              faceapi.env.setBrowserEnv()
-              faceapi.env.setBackend('cpu')
-            }
-            resolve()
+            // Load required models
+            Promise.all([
+              faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+              faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+              faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+            ]).then(() => {
+              console.log('Face API models loaded successfully')
+              resolve()
+            }).catch(reject)
           }
           script.onerror = reject
           document.head.appendChild(script)
         })
       } else {
-        // Set face-api to use CPU backend
-        faceapi.env.setBrowserEnv()
-        faceapi.env.setBackend('cpu')
+        // Models already loaded, just ensure they're available
+        try {
+          await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+            faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+          ])
+          console.log('Face API models loaded successfully')
+        } catch (error) {
+          console.log('Models already loaded or loading failed:', error)
+        }
       }
     })
 
@@ -303,17 +482,18 @@ export default {
     return {
       video,
       canvas,
+      overlay,
       cameraContainer,
       isCameraActive,
+      isFaceDetected,
       loading,
-      capturedImage,
       resultMessage,
       resultClass,
       studentForm,
+      isFormValid,
+      studentCodeError,
       startCamera,
       stopCamera,
-      captureFace,
-      retakePhoto,
       registerFace,
       handleSubmit
     }
@@ -400,6 +580,16 @@ export default {
   border-color: #4285f4;
 }
 
+.form-group input.error {
+  border-color: #e74c3c;
+}
+
+.error-message {
+  color: #e74c3c;
+  font-size: 0.9rem;
+  margin-top: 5px;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -435,6 +625,15 @@ video {
   max-height: 100%;
 }
 
+.face-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .camera-overlay {
   position: absolute;
   top: 0;
@@ -444,6 +643,7 @@ video {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .face-frame {
@@ -477,6 +677,7 @@ video {
   gap: 15px;
   justify-content: center;
   flex-wrap: wrap;
+  margin-bottom: 20px;
 }
 
 .btn {
@@ -522,43 +723,29 @@ video {
   transform: translateY(-2px);
 }
 
-.btn-large {
-  padding: 15px 30px;
-  font-size: 1.1rem;
-}
-
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
 }
 
-.captured-image-section {
-  margin-bottom: 30px;
+.face-status {
   text-align: center;
-}
-
-.captured-image-section h3 {
-  color: #333;
-  margin-bottom: 20px;
-  font-size: 1.3rem;
+  padding: 15px;
+  border-radius: 8px;
   font-weight: 600;
 }
 
-.captured-image {
-  margin-bottom: 20px;
+.status-success {
+  background: #d5f4e6;
+  color: #27ae60;
+  border: 2px solid #27ae60;
 }
 
-.captured-image img {
-  max-width: 300px;
-  max-height: 300px;
-  border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-.submit-section {
-  text-align: center;
-  margin-bottom: 20px;
+.status-waiting {
+  background: #fff3cd;
+  color: #856404;
+  border: 2px solid #ffc107;
 }
 
 .result-message {
@@ -599,6 +786,24 @@ video {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.registration-progress {
+  text-align: center;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  margin-top: 20px;
+}
+
+.progress-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #4285f4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 10px;
 }
 
 @keyframes slideUp {
