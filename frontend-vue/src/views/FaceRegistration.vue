@@ -2,8 +2,17 @@
   <div class="face-registration-container">
     <div class="face-registration-card">
       <div class="face-registration-header">
-        <h1>🧑‍💻 ลงทะเบียนใบหน้า</h1>
-        <p>สำหรับนักเรียน</p>
+        <div class="header-content">
+          <div class="back-button">
+            <button @click="goBack" class="btn-back">
+              ←
+            </button>
+          </div>
+          <div class="header-text">
+            <h1>🧑‍💻 ลงทะเบียนใบหน้า</h1>
+            <p>สำหรับนักเรียน</p>
+          </div>
+        </div>
       </div>
 
       <div class="face-registration-content">
@@ -120,12 +129,14 @@
 
 <script>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { faceService } from '../services/face'
 import { showNotification } from '../utils/helpers'
 
 export default {
   name: 'FaceRegistration',
   setup() {
+    const router = useRouter()
     const video = ref(null)
     const canvas = ref(null)
     const overlay = ref(null)
@@ -440,6 +451,10 @@ export default {
       // Form validation is handled in registerFace
     }
 
+    const goBack = () => {
+      router.push('/dashboard')
+    }
+
     onMounted(async () => {
       // Load face-api.js if not already loaded
       if (typeof faceapi === 'undefined') {
@@ -495,7 +510,8 @@ export default {
       startCamera,
       stopCamera,
       registerFace,
-      handleSubmit
+      handleSubmit,
+      goBack
     }
   }
 }
@@ -521,15 +537,54 @@ export default {
   color: white;
   text-align: center;
   padding: 40px 20px;
+  position: relative;
 }
 
-.face-registration-header h1 {
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.back-button {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.btn-back {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-back:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.header-text {
+  text-align: center;
+}
+
+.header-text h1 {
   font-size: 2rem;
   margin-bottom: 10px;
   font-weight: 700;
 }
 
-.face-registration-header p {
+.header-text p {
   font-size: 1.1rem;
   opacity: 0.9;
 }

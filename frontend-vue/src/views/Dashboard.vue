@@ -99,9 +99,7 @@
       <div v-if="!qrStore.loading && qrStore.qrSessions.length === 0" class="qr-section">
         <h2>📋 รายการ QR Code</h2>
         <p>ยังไม่มี QR Code ที่สร้างไว้</p>
-        <button @click="goToCreateQR" class="btn btn-primary">
-          สร้าง QR Code แรก
-        </button>
+        
       </div>
     </div>
 
