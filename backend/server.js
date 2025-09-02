@@ -1,3 +1,6 @@
+// Load environment variables
+require('dotenv').config();
+
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
@@ -6,8 +9,13 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 
 // Environment variables
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL;
+const BACKEND_URL = process.env.BACKEND_URL;
+const PORT = process.env.PORT || 3000;
+const SESSION_SECRET = process.env.SESSION_SECRET;
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS);
+const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS);
+const SESSION_MAX_AGE = parseInt(process.env.SESSION_MAX_AGE);
 
 // Import modules
 const { passport, requireAuth, requireTeacher, requireTeacherCode } = require('./auth');
@@ -19,7 +27,6 @@ const attendanceRoutes = require('./routes/attendance');
 const userRoutes = require('./routes/users');
 
 const app = express();
-const PORT = 3000;
 
 // Security middleware
 app.use(helmet());
@@ -28,10 +35,10 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting - เพิ่มขึ้นสำหรับ development
+// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500 // เพิ่มจาก 100 เป็น 500 requests per windowMs สำหรับ development
+  windowMs: RATE_LIMIT_WINDOW_MS, // 15 minutes default
+  max: RATE_LIMIT_MAX_REQUESTS // 500 requests per windowMs default
 });
 app.use(limiter);
 
@@ -41,13 +48,13 @@ app.use(express.urlencoded({ extended: true }));
 
 // Session configuration
 app.use(session({
-  secret: 'bac3cb47c2d9e2ce1a0cbd21ef2fd8a4',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: false,
     httpOnly: true,
-    maxAge: 1 * 60 * 60 * 1000 // 1 ชั่วโมง (session จะหมดอายุอัตโนมัติหลังจาก 1 ชั่วโมง)
+    maxAge: SESSION_MAX_AGE // 1 ชั่วโมง default
   }
 }));
 

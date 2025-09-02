@@ -108,19 +108,13 @@
           <!-- Registration Progress -->
           <div v-if="loading" class="registration-progress">
             <div class="progress-spinner"></div>
-            <p>{{ resultMessage }}</p>
+            <p>{{ resultMessage || 'กำลังประมวลผล...' }}</p>
           </div>
         </div>
 
-        <!-- Result Message -->
-        <div v-if="resultMessage" class="result-message" :class="resultClass">
+        <!-- Result Message (แสดงเฉพาะเมื่อไม่ loading) -->
+        <div v-if="resultMessage && !loading" class="result-message" :class="resultClass">
           {{ resultMessage }}
-        </div>
-
-        <!-- Loading -->
-        <div v-if="loading" class="loading">
-          <div class="spinner"></div>
-          <p>กำลังประมวลผล...</p>
         </div>
       </div>
     </div>
@@ -128,10 +122,11 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { faceService } from '../services/face'
+import { attendanceService } from '../services/attendance'
 import { showNotification } from '../utils/helpers'
+import faceModelsService from '../services/faceModels'
 
 export default {
   name: 'FaceRegistration',
@@ -184,16 +179,26 @@ export default {
       }
 
       try {
-        // Check if student already exists
+        // Check if student already exists using existing endpoint
         loading.value = true
         resultMessage.value = 'กำลังตรวจสอบข้อมูล...'
         resultClass.value = ''
         
-        await faceService.checkStudentExists({
+        // ใช้ endpoint ที่ถูกต้องสำหรับการตรวจสอบนักเรียนก่อนลงทะเบียนใบหน้า
+        const validationResult = await attendanceService.checkStudentForRegistration({
           student_code: studentForm.student_code,
           firstname: studentForm.firstname,
           lastname: studentForm.lastname
         })
+        
+        // ถ้า validation สำเร็จ แสดงว่านักเรียนไม่มีปัญหา สามารถลงทะเบียนได้
+        console.log('Student validation successful:', validationResult)
+        
+        // Load face models if not already loaded
+        if (!faceModelsService.isModelsLoaded()) {
+          resultMessage.value = 'กำลังโหลดโมเดลใบหน้า...'
+          await faceModelsService.loadModels()
+        }
         
         // If we get here, student doesn't exist (backend returns error if exists)
         
@@ -407,13 +412,15 @@ export default {
         
         resultMessage.value = 'กำลังลงทะเบียนใบหน้า...'
         
-        const formData = new FormData()
-        formData.append('student_id', studentForm.student_code)
-        formData.append('first_name', studentForm.firstname)
-        formData.append('last_name', studentForm.lastname)
-        formData.append('face_descriptor', JSON.stringify(Array.from(detection.descriptor)))
+        // ส่งเป็น JSON object แทน FormData
+        const registrationData = {
+          student_id: studentForm.student_code,
+          first_name: studentForm.firstname,
+          last_name: studentForm.lastname,
+          face_descriptor: JSON.stringify(Array.from(detection.descriptor))
+        }
         
-        await faceService.registerFace(formData)
+        await attendanceService.registerFace(registrationData)
         
         resultMessage.value = 'ลงทะเบียนใบหน้าสำเร็จ'
         resultClass.value = 'result-success'
@@ -845,20 +852,30 @@ video {
 
 .registration-progress {
   text-align: center;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: 10px;
+  padding: 30px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 15px;
   margin-top: 20px;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .progress-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #f3f3f3;
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e9ecef;
   border-top: 4px solid #4285f4;
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin: 0 auto 10px;
+  margin: 0 auto 15px;
+  box-shadow: 0 2px 10px rgba(66, 133, 244, 0.3);
+}
+
+.registration-progress p {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #495057;
+  margin: 0;
 }
 
 @keyframes slideUp {

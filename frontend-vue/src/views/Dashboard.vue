@@ -119,15 +119,16 @@
 <script>
 import { useAuthStore } from '../stores/auth'
 import { useQRStore } from '../stores/qr'
-import { useRouter } from 'vue-router'
 import { ref, computed, onMounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { 
-  getSessionStatus, 
-  getSessionStatusText, 
-  getSessionStatusClass,
-  formatDateTime,
-  showNotification 
+  formatDateTime, 
+  showNotification,
+  getSessionStatus,
+  getSessionStatusText,
+  getSessionStatusClass
 } from '../utils/helpers'
+import faceModelsService from '../services/faceModels'
 
 export default {
   name: 'Dashboard',
@@ -207,6 +208,22 @@ export default {
 
     onMounted(async () => {
       try {
+        // Load face models in background after successful login
+        if (authStore.isAuthenticated) {
+          console.log('🔄 Loading face models in background...')
+          
+          // Load models in background (don't block UI)
+          faceModelsService.loadModels()
+            .then(() => {
+              console.log('✅ Face models loaded successfully in Dashboard')
+            })
+            .catch((error) => {
+              console.error('❌ Failed to load face models in Dashboard:', error)
+              // Don't show error to user - models will be loaded when needed
+            })
+        }
+        
+        // Load QR sessions
         await qrStore.loadQRSessions()
       } catch (error) {
         console.error('Failed to load dashboard data:', error)

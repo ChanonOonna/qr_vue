@@ -411,32 +411,32 @@ router.post('/student/register', async (req, res) => {
     const [faceRows] = await pool.execute('SELECT student_id, face_descriptor FROM studentface WHERE face_descriptor IS NOT NULL');
     
     if (faceRows.length > 0) {
-      const newDescriptor = JSON.parse(face_descriptor);
+    const newDescriptor = JSON.parse(face_descriptor);
       console.log('Checking against', faceRows.length, 'existing faces')
-      
+
       // ฟังก์ชันคำนวณ L2 distance
-      const l2Distance = (a, b) => {
-        let sum = 0;
-        for (let i = 0; i < a.length; i++) {
-          sum += (a[i] - b[i]) ** 2;
-        }
-        return Math.sqrt(sum);
-      };
+    const l2Distance = (a, b) => {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        sum += (a[i] - b[i]) ** 2;
+      }
+      return Math.sqrt(sum);
+    };
 
       // เปรียบเทียบกับทุก descriptor ใน DB
-      for (const row of faceRows) {
-        if (!row.face_descriptor) continue;
-        let dbDescriptor;
-        try {
-          dbDescriptor = JSON.parse(row.face_descriptor);
-        } catch (e) {
-          continue;
-        }
-        if (!Array.isArray(dbDescriptor) || dbDescriptor.length !== newDescriptor.length) continue;
-        const dist = l2Distance(newDescriptor, dbDescriptor);
+    for (const row of faceRows) {
+      if (!row.face_descriptor) continue;
+      let dbDescriptor;
+      try {
+        dbDescriptor = JSON.parse(row.face_descriptor);
+      } catch (e) {
+        continue;
+      }
+      if (!Array.isArray(dbDescriptor) || dbDescriptor.length !== newDescriptor.length) continue;
+      const dist = l2Distance(newDescriptor, dbDescriptor);
         if (dist < 0.5) { // threshold 0.5
           console.log('Duplicate face detected, distance:', dist, 'for student:', row.student_id)
-          return res.status(400).json({ success: false, message: 'ใบหน้านี้ถูกใช้ลงทะเบียนไปแล้วกับรหัสอื่น' });
+        return res.status(400).json({ success: false, message: 'ใบหน้านี้ถูกใช้ลงทะเบียนไปแล้วกับรหัสอื่น' });
         }
       }
     }

@@ -31,10 +31,30 @@ export const attendanceService = {
     }
   },
 
+  // Check if student can register face (no QR token needed)
+  async checkStudentForRegistration(studentData) {
+    try {
+      const response = await api.post('/attendance/student/check', studentData)
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  },
+
   // Student check-in
   async checkIn(checkInData) {
     try {
       const response = await api.post('/attendance/checkin', checkInData)
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  },
+
+  // Register student face
+  async registerFace(faceData) {
+    try {
+      const response = await api.post('/attendance/student/register', faceData)
       return response.data
     } catch (error) {
       throw error

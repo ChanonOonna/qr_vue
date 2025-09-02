@@ -1,8 +1,13 @@
+
+
 <template>
   <div class="scan-container">
     <div class="scan-card">
       <!-- Header -->
       <div class="scan-header">
+        <button @click="goBack" class="back-btn">
+          ← กลับ
+        </button>
         <h1>📱 เช็คชื่อเข้าชั้นเรียน</h1>
         <p>สแกน QR Code และยืนยันตัวตนด้วยใบหน้า</p>
       </div>
@@ -155,12 +160,46 @@
                 <div class="face-frame"></div>
               </div>
             </div>
+            
+            <!-- Debug Information Panel -->
+            <div class="debug-info-panel">
+              <h4>📊 ข้อมูลการตรวจจับ</h4>
+              <div class="debug-grid">
+                <div class="debug-item">
+                  <span class="debug-label">EAR (Blink):</span>
+                  <span class="debug-value" :class="{ 'active': debugInfo.ear < 0.25 }">
+                    {{ debugInfo.ear.toFixed(3) }}
+                  </span>
+                  <span class="debug-threshold">(Need: &lt;0.25)</span>
+                </div>
+                <div class="debug-item">
+                  <span class="debug-label">Happy (Smile):</span>
+                  <span class="debug-value" :class="{ 'active': debugInfo.happy > 0.6 }">
+                    {{ debugInfo.happy.toFixed(3) }}
+                  </span>
+                  <span class="debug-threshold">(Need: &gt;0.6)</span>
+                </div>
+                <div class="debug-item">
+                  <span class="debug-label">Movement:</span>
+                  <span class="debug-value" :class="{ 'active': debugInfo.movement > 30 }">
+                    {{ debugInfo.movement.toFixed(1) }}
+                  </span>
+                  <span class="debug-threshold">(Need: &gt;30)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="face-controls">
+              <button @click="startFaceVerification" class="btn btn-primary" :disabled="loading">
+                {{ loading ? 'กำลังโหลดโมเดล...' : (faceModelsService.isModelsLoaded() ? 'เริ่มใหม่' : 'โหลดโมเดลและเริ่มยืนยัน') }}
+              </button>
+              <button @click="cancelFaceVerification" class="btn btn-secondary">
+                ยกเลิก
+              </button>
+            </div>
 
             <div class="liveness-instructions">
               <p>กรุณาทำตามนี้:</p>
-              <div class="instruction-details">
-                <p class="instruction-note">ขยับหัว 2 ครั้ง • กระพริบตา 3 ครั้ง • ยิ้ม 1 ครั้ง</p>
-              </div>
               <ul>
                 <li :class="{ completed: livenessState.headMovement.done }">
                   <span class="action-text">ขยับหัว</span>
@@ -175,15 +214,6 @@
                   <span class="progress-text">({{ livenessState.smile.completed }}/{{ livenessState.smile.required }})</span>
                 </li>
               </ul>
-            </div>
-
-            <div class="face-controls">
-              <button @click="startFaceVerification" class="btn btn-primary" :disabled="loading">
-                {{ loading ? 'กำลังโหลดโมเดล...' : 'เริ่มยืนยันใบหน้า' }}
-              </button>
-              <button @click="cancelFaceVerification" class="btn btn-secondary">
-                ยกเลิก
-              </button>
             </div>
           </div>
         </div>
@@ -205,12 +235,16 @@
 
 <script>
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { attendanceService } from '../services/attendance'
 import { formatDateTime, showNotification } from '../utils/helpers'
+import faceModelsService from '../services/faceModels'
 
 export default {
   name: 'ScanQR',
   setup() {
+    const router = useRouter()
+    
     // Refs
     const video = ref(null)
     const faceVideo = ref(null)
@@ -230,6 +264,13 @@ export default {
       headMovement: { required: 2, completed: 0, done: false },
       blink: { required: 3, completed: 0, done: false },
       smile: { required: 1, completed: 0, done: false }
+    })
+    
+    // Debug information state
+    const debugInfo = reactive({
+      ear: 0,
+      happy: 0,
+      movement: 0
     })
     
     // Form data
@@ -398,8 +439,13 @@ export default {
         // Call backend to validate student data
         const validationResult = await attendanceService.validateStudentData(validationData)
         
-        // If validation passes, show face verification modal
+        // If validation passes, show face verification modal and start camera
         showFaceModal.value = true
+        
+        // Wait a bit for modal to show, then start face verification
+        setTimeout(() => {
+          startFaceVerification()
+        }, 100)
         
       } catch (error) {
         console.error('Failed to submit student info:', error)
@@ -411,27 +457,17 @@ export default {
 
     const startFaceVerification = async () => {
       try {
-        // Check if face-api models are loaded
-        if (typeof faceapi === 'undefined') {
-          throw new Error('Face API not loaded')
-        }
-        
-        // Ensure models are loaded
-        if (!faceapi.nets.tinyFaceDetector.isLoaded) {
+        // Check if face-api models are loaded using service
+        if (!faceModelsService.isModelsLoaded()) {
           console.log('Loading face detection models...')
-          await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
+          loading.value = true
+          
+          // Load models using service (with caching)
+          await faceModelsService.loadModels()
+          
+          loading.value = false
+          console.log('All models loaded successfully')
         }
-        if (!faceapi.nets.faceLandmark68Net.isLoaded) {
-          await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
-        }
-        if (!faceapi.nets.faceExpressionNet.isLoaded) {
-          await faceapi.nets.faceExpressionNet.loadFromUri('/models')
-        }
-        if (!faceapi.nets.faceRecognitionNet.isLoaded) {
-          await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-        }
-        
-        console.log('All models loaded, starting face verification...')
         
         // Reset liveness state
         Object.assign(livenessState, {
@@ -461,6 +497,7 @@ export default {
         console.error('Failed to start face verification:', error)
         resultMessage.value = 'ไม่สามารถเริ่มการยืนยันใบหน้าได้: ' + error.message
         resultClass.value = 'result-error'
+        loading.value = false
         cancelFaceVerification()
       }
     }
@@ -519,6 +556,9 @@ export default {
                   livenessState.headMovement.done = true
                 }
               }
+              
+              // Update debug info
+              debugInfo.movement = distance
             }
           }
           
@@ -528,6 +568,10 @@ export default {
           const leftEAR = calculateEyeAspectRatio(leftEye)
           const rightEAR = calculateEyeAspectRatio(rightEye)
           const avgEAR = (leftEAR + rightEAR) / 2
+          
+          // Update debug info
+          debugInfo.ear = avgEAR
+          debugInfo.happy = expressions.happy
           
           if (!livenessState.blink.done) {
             if (!window.blinkTracker) {
@@ -616,32 +660,7 @@ export default {
       ctx.font = '16px Arial'
       ctx.fillText('✅ ตรวจพบใบหน้า', 10, 30)
       
-      // Add debug information
-      const landmarks = detection.landmarks
-      const expressions = detection.expressions
-      const leftEye = landmarks.getLeftEye()
-      const rightEye = landmarks.getRightEye()
-      const leftEAR = calculateEyeAspectRatio(leftEye)
-      const rightEAR = calculateEyeAspectRatio(rightEye)
-      const avgEAR = (leftEAR + rightEAR) / 2
-      
-      ctx.fillStyle = '#ffffff'
-      ctx.font = '12px Arial'
-      ctx.fillText(`EAR: ${avgEAR.toFixed(3)} (Blink: <0.25)`, 10, 50)
-      ctx.fillText(`Happy: ${expressions.happy.toFixed(3)} (Smile: >0.6)`, 10, 65)
-      
-      // Show head movement status
-      if (window.headMovementTracker) {
-        const positions = window.headMovementTracker.positions
-        if (positions.length > 0) {
-          const firstPos = positions[0]
-          const lastPos = positions[positions.length - 1]
-          const distance = Math.sqrt(
-            Math.pow(lastPos.x - firstPos.x, 2) + Math.pow(lastPos.y - firstPos.y, 2)
-          )
-          ctx.fillText(`Movement: ${distance.toFixed(1)} (Need: >30)`, 10, 80)
-        }
-      }
+      // Canvas now only shows face frame and basic status
     }
 
     const clearFaceFrame = () => {
@@ -756,6 +775,10 @@ export default {
       }
     }
 
+    const goBack = () => {
+      router.push('/')
+    }
+
     // Lifecycle
     onMounted(async () => {
       // Load jsQR library
@@ -769,63 +792,9 @@ export default {
         })
       }
       
-      // Load face-api.js and models
-      if (typeof faceapi === 'undefined') {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src = '/js/face-api.min.js'
-          script.onload = () => {
-            // Initialize face-api with CPU backend
-            console.log('Face API loaded, setting CPU backend...')
-            
-            // Force CPU backend to avoid WebGL issues
-            if (typeof faceapi !== 'undefined' && faceapi.env) {
-              try {
-                faceapi.env.setBackend('cpu')
-                console.log('CPU backend set successfully')
-              } catch (e) {
-                console.log('CPU backend setting failed, continuing with default:', e)
-              }
-            }
-            
-            // Load all required models
-            Promise.all([
-              faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-              faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-              faceapi.nets.faceExpressionNet.loadFromUri('/models'),
-              faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-            ]).then(() => {
-              console.log('All face-api models loaded successfully')
-              resolve()
-            }).catch(reject)
-          }
-          script.onerror = reject
-          document.head.appendChild(script)
-        })
-      } else {
-        // Models already loaded, just ensure they're available
-        try {
-          // Force CPU backend if not already set
-          if (typeof faceapi !== 'undefined' && faceapi.env) {
-            try {
-              faceapi.env.setBackend('cpu')
-              console.log('CPU backend set successfully')
-            } catch (e) {
-              console.log('CPU backend setting failed, continuing with default:', e)
-            }
-          }
-          
-          await Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-            faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-            faceapi.nets.faceExpressionNet.loadFromUri('/models'),
-            faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-          ])
-          console.log('All face-api models loaded successfully')
-        } catch (error) {
-          console.log('Models already loaded or loading failed:', error)
-        }
-      }
+      // Face API is loaded in Login.vue after successful login
+      // Models are loaded via faceModelsService with caching
+      console.log('ScanQR mounted - face models will be loaded when needed')
     })
 
     onUnmounted(() => {
@@ -848,6 +817,7 @@ export default {
       resultClass,
       showFaceModal,
       livenessState,
+      debugInfo,
       studentForm,
       
       // Computed
@@ -860,7 +830,8 @@ export default {
       submitStudentInfo,
       startFaceVerification,
       cancelFaceVerification,
-      formatDateTime
+      formatDateTime,
+      goBack
     }
   }
 }
@@ -886,6 +857,7 @@ export default {
   color: white;
   text-align: center;
   padding: 40px 20px;
+  position: relative; /* Added for positioning back button */
 }
 
 .scan-header h1 {
@@ -897,6 +869,26 @@ export default {
 .scan-header p {
   font-size: 1.1rem;
   opacity: 0.9;
+}
+
+.back-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 8px 15px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  z-index: 10;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .scan-content {
@@ -1026,7 +1018,7 @@ video {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   border: none;
   white-space: nowrap;
 }
@@ -1034,58 +1026,43 @@ video {
 .btn-primary {
   background: #4285f4;
   color: white;
-  box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: #3367d6;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
 }
 
 .btn-primary:disabled {
   background: #95a5a6;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 .btn-secondary {
   background: #e74c3c;
   color: white;
-  box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
 }
 
 .btn-secondary:hover:not(:disabled) {
   background: #c0392b;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
 }
 
 .btn-secondary:disabled {
   background: #95a5a6;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 .btn-success {
   background: #27ae60;
   color: white;
-  box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
 }
 
 .btn-success:hover:not(:disabled) {
   background: #229954;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
 }
 
 .btn-success:disabled {
   background: #95a5a6;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
 
 .manual-input {
@@ -1262,7 +1239,7 @@ video {
   background: #f8f9fa;
   border-radius: 10px;
   padding: 20px;
-  margin-bottom: 20px;
+  margin-top: 20px;
   text-align: center;
 }
 
@@ -1273,57 +1250,100 @@ video {
   font-size: 1.1rem;
 }
 
-.instruction-details {
-  margin-bottom: 20px;
-}
-
-.instruction-note {
-  font-size: 0.9rem;
-  color: #666;
-  font-weight: 500;
-  margin-bottom: 0;
-}
-
 .liveness-instructions ul {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   justify-content: center;
-  gap: 30px;
+  gap: 20px;
 }
 
 .liveness-instructions li {
-  padding: 15px 20px;
+  padding: 12px 16px;
   background: white;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 6px;
+  font-weight: 500;
   color: #555;
-  border: 2px solid #e1e8ed;
-  transition: all 0.3s ease;
-  min-width: 120px;
+  border: 1px solid #ddd;
+  min-width: 100px;
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .liveness-instructions li.completed {
   color: #27ae60;
-  background: #d5f4e6;
+  background: #e8f5e8;
   border-color: #27ae60;
-  transform: scale(1.05);
 }
 
 .action-text {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
 .progress-text {
   font-size: 0.8rem;
-  font-weight: 500;
-  opacity: 0.8;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.debug-info-panel {
+  background: #f8f9fa;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+  border: 2px solid #e9ecef;
+}
+
+.debug-info-panel h4 {
+  color: #333;
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.debug-item {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  text-align: center;
+}
+
+.debug-label {
+  display: block;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.debug-value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #6c757d;
+  margin-bottom: 5px;
+}
+
+.debug-value.active {
+  color: #27ae60;
+}
+
+.debug-threshold {
+  display: block;
+  font-size: 0.8rem;
+  color: #6c757d;
+  opacity: 0.7;
 }
 
 .face-controls {

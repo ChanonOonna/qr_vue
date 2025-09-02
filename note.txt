@@ -58,3 +58,47 @@ prompt
 เห็นไหม กรุณาวางใบหน้าในกรอบกล้อง ✅ ยิ้ม
 เเต่ต้องการให้ตรวจสอบใบหน้าก่อนว่า ใบหน้านี้ข้อมูลถูกกับ ข้อมูลที่กรอกมาไหมจาก รหัสนิสิต  ชื่อ นามสกุล เมื่อ ถูกก็ให้ทำ liveness check ต่อ
 liveness check จะเป็นเเบบสุ่ม ว่าครั้งนนี้ต้องทำอะไรบ้าง อย่างน้อย 2 อย่าง
+
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                    FRONTEND (Vue.js)                        │
+├─────────────────────────────────────────────────────────────┤
+│  📱 Camera Access                                           │
+│  ├─ getUserMedia() → Video Stream                           │
+│  └─ <video> element ← srcObject                             │
+│                                                             │
+│  🧠 Face API Processing                                     │
+│  ├─ TinyFaceDetector → Face Detection                       │
+│  ├─ FaceLandmark68Net → 68 Landmarks                        │
+│  ├─ FaceExpressionNet → Emotions                            │
+│  └─ FaceRecognitionNet → 128 Descriptor                     │
+│                                                             │
+│  �� Liveness Detection                                     │
+│  ├─ Head Movement Tracking                                  │
+│  ├─ Eye Aspect Ratio (EAR)                                  │
+│  └─ Happy Expression Score                                  │
+│                                                             │
+│  🎨 Canvas Rendering                                        │
+│  ├─ Face Frame Drawing                                      │
+│  ├─ Status Text Display                                     │
+│  └─ Debug Information                                       │
+│                                                             │
+│  📤 Data Transmission                                       │
+│  └─ Face Descriptor (128 numbers) → Backend                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    BACKEND (Node.js)                        │
+├─────────────────────────────────────────────────────────────┤
+│  🔍 Face Validation                                         │
+│  ├─ Compare with stored descriptors                         │
+│  ├─ L2 Distance calculation                                 │
+│  └─ Duplicate face check                                    │
+│                                                             │
+│  💾 Database Operations                                     │
+│  ├─ Student validation                                      │
+│  ├─ Attendance recording                                    │
+│  └─ Face descriptor storage                                 │
+└─────────────────────────────────────────────────────────────┘

@@ -99,6 +99,13 @@ npm run download-models
 ### 5. Environment Configuration
 
 #### Backend (.env)
+```bash
+# Copy environment example
+cp backend/env.example backend/.env
+
+# Edit the .env file with your settings
+```
+
 ```env
 DB_HOST=localhost
 DB_USER=root
@@ -115,6 +122,13 @@ BACKEND_URL=http://localhost:3000
 ```
 
 #### Frontend (.env)
+```bash
+# Copy environment example
+cp frontend-vue/env.example frontend-vue/.env
+
+# Edit the .env file with your settings
+```
+
 ```env
 VITE_FRONTEND_URL=http://localhost:3001
 VITE_BACKEND_URL=http://localhost:3000
@@ -129,6 +143,14 @@ npm run dev
 # หรือแยกกัน
 npm run dev:backend  # Backend on port 3000
 npm run dev:frontend # Frontend on port 3001
+```
+
+### 7. Download Face API Models
+
+```bash
+# Download models automatically
+cd frontend-vue
+npm run download-models
 ```
 
 ## 📁 Project Structure

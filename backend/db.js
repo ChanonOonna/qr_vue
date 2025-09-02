@@ -1,15 +1,18 @@
+// Load environment variables
+require('dotenv').config();
+
 const mysql = require('mysql2/promise');
 
 // Database connection configuration
 const dbConfig = {
-  host: 'localhost',
-  user: 'root',
-  password: 'Nn1234',
-  database: 'qrcheck',
-  port: 3306,
+  host: process.env.DB_HOST ,
+  user: process.env.DB_USER ,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: parseInt(process.env.DB_PORT),
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT),
+  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT)
 };
 
 // Create connection pool

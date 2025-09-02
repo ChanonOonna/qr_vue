@@ -1,3 +1,6 @@
+// Load environment variables
+require('dotenv').config();
+
 const passport = require('passport');
 const Auth0Strategy = require('passport-auth0');
 const { pool } = require('./db');
@@ -5,10 +8,10 @@ const { pool } = require('./db');
 // Auth0 Strategy configuration
 const strategy = new Auth0Strategy(
   {
-    domain: 'dev-tte8v56bmpl3e46o.us.auth0.com',
-    clientID: 'sxtFvquBeJ3X3Ez39GihsJayVwOO3mMU',
-    clientSecret: '_1dv2E_XLFMI-yE3MN4Y9clOzbPDfMhh4-s24ASiyY6fG7lWHCoCRqJT4SKe7fMV',
-    callbackURL: 'http://localhost:3000/callback',
+    domain: process.env.AUTH0_DOMAIN ,
+    clientID: process.env.AUTH0_CLIENT_ID ,
+    clientSecret: process.env.AUTH0_CLIENT_SECRET ,
+    callbackURL: process.env.AUTH0_CALLBACK_URL ,
     scope: 'openid email profile'
   },
   async (accessToken, refreshToken, extraParams, profile, done) => {
