@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>68-Point Face Landmarks Visualization</title>
+    
+    <!-- Face-API.js -->
+    <script src="js/face-api.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .canvas-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        canvas {
+            border: 2px solid #333;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .legend-item {
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        .jawline { border-left-color: #ff6b6b; background: #ffe6e6; }
+        .right-eyebrow { border-left-color: #4ecdc4; background: #e6f7f6; }
+        .left-eyebrow { border-left-color: #45b7d1; background: #e6f4f8; }
+        .nose { border-left-color: #96ceb4; background: #e8f5e8; }
+        .right-eye { border-left-color: #feca57; background: #fff8e6; }
+        .left-eye { border-left-color: #ff9ff3; background: #ffe6f7; }
+        .mouth { border-left-color: #a55eea; background: #f0e6f8; }
+        
+        /* สไตล์สำหรับส่วนอัปโหลดภาพ */
+        .image-upload-section {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 2px dashed #dee2e6;
+        }
+        
+        .upload-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+        
+        .upload-btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        .upload-hint {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        .canvas-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .image-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        #landmarksCanvas {
+            position: relative;
+            z-index: 2;
+        }
+        
+        /* สไตล์สำหรับปุ่มใหม่ */
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .btn-info:hover {
+            background: #138496;
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎭 68-Point Face Landmarks Visualization</h1>
+        
+        <div class="controls">
+            <button onclick="drawLandmarks()">🎨 วาดจุดสำคัญ</button>
+            <button onclick="drawWithLabels()">🏷️ แสดงป้ายชื่อ</button>
+            <button onclick="drawWithConnections()">🔗 แสดงเส้นเชื่อม</button>
+            <button onclick="clearCanvas()">🧹 ล้างภาพ</button>
+            <button onclick="adjustPointSize('increase')" class="btn-info">🔍 เพิ่มขนาดจุด</button>
+            <button onclick="adjustPointSize('decrease')" class="btn-info">🔍 ลดขนาดจุด</button>
+            <button onclick="resetImage()" class="btn-warning">🖼️ รีเซ็ตภาพ</button>
+            <button onclick="detectRealFace()" class="btn btn-success" id="detectFaceBtn" disabled>
+              🎯 ตรวจจับใบหน้าจริง
+            </button>
+            <button onclick="toggleRealLandmarks()" class="btn btn-primary" id="toggleRealBtn" style="display: none;">
+              🔄 สลับระหว่างจุดจริง/ตัวอย่าง
+            </button>
+            <button onclick="reloadModels()" class="btn btn-info" id="reloadModelsBtn">
+              🔄 โหลด Models ใหม่
+            </button>
+        </div>
+        
+                <div class="canvas-container">
+          <!-- Image Upload Section -->
+          <div class="image-upload-section">
+            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+            <button onclick="document.getElementById('imageInput').click()" class="upload-btn">
+              📷 อัปโหลดภาพใบหน้า
+            </button>
+            <p class="upload-hint">รองรับไฟล์ JPG, PNG, GIF ขนาดไม่เกิน 1 GB</p>
+          </div>
+          
+          <!-- Canvas with Background Image -->
+          <div class="canvas-wrapper">
+            <canvas id="landmarksCanvas" width="800" height="600"></canvas>
+            <div id="imageContainer" class="image-container" style="display: none;">
+              <img id="faceImage" alt="ใบหน้า" style="max-width: 100%; height: auto;">
+            </div>
+          </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item jawline">
+                <strong>Jawline (ขอบกราม)</strong><br>
+                <small>จุด 0-16: ขอบกรามจากคางถึงหู</small>
+            </div>
+            <div class="legend-item right-eyebrow">
+                <strong>Right Eyebrow (คิ้วขวา)</strong><br>
+                <small>จุด 17-21: คิ้วด้านขวา</small>
+            </div>
+            <div class="legend-item left-eyebrow">
+                <strong>Left Eyebrow (คิ้วซ้าย)</strong><br>
+                <small>จุด 22-26: คิ้วด้านซ้าย</small>
+            </div>
+            <div class="legend-item nose">
+                <strong>Nose (จมูก)</strong><br>
+                <small>จุด 27-35: จมูกและจุดเชื่อม</small>
+            </div>
+            <div class="legend-item right-eye">
+                <strong>Right Eye (ตาขวา)</strong><br>
+                <small>จุด 36-41: ตาด้านขวา</small>
+            </div>
+            <div class="legend-item left-eye">
+                <strong>Left Eye (ตาซ้าย)</strong><br>
+                <small>จุด 42-47: ตาด้านซ้าย</small>
+            </div>
+            <div class="legend-item mouth">
+                <strong>Mouth (ปาก)</strong><br>
+                <small>จุด 48-67: ปากและริมฝีปาก</small>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('landmarksCanvas');
+        const ctx = canvas.getContext('2d');
+        const imageInput = document.getElementById('imageInput');
+        const faceImage = document.getElementById('faceImage');
+        const imageContainer = document.getElementById('imageContainer');
+        
+        // ตัวแปรสำหรับจัดการภาพ
+        let backgroundImage = null;
+        let imageScale = 1;
+        let imageOffsetX = 0;
+        let imageOffsetY = 0;
+        let pointSize = 2; // ลดขนาดจุดเริ่มต้น
+        let showLabels = false;
+        let showConnections = false;
+        
+        // ตัวแปรสำหรับ Face Detection
+        let realLandmarks = null;
+        let useRealLandmarks = false;
+        let modelsLoaded = false;
+        let isDetecting = false;
+        
+        // เพิ่ม Event Listener สำหรับการอัปโหลดภาพ
+        imageInput.addEventListener('change', handleImageUpload);
+        
+        // โหลด Face-API Models
+        async function loadFaceModels() {
+            try {
+                console.log('กำลังโหลด Face-API Models...');
+                
+                // ตรวจสอบว่า faceapi พร้อมใช้งานหรือไม่
+                if (typeof faceapi === 'undefined') {
+                    throw new Error('ไม่สามารถโหลด Face-API.js ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือไฟล์ js/face-api.min.js');
+                }
+                
+                // โหลดโมเดลที่จำเป็น
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri('models'),
+                    faceapi.nets.faceLandmark68Net.loadFromUri('models'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('models')
+                ]);
+                
+                console.log('โหลด Face-API Models สำเร็จ!');
+                modelsLoaded = true;
+                document.getElementById('detectFaceBtn').disabled = false;
+                
+            } catch (error) {
+                console.error('เกิดข้อผิดพลาดในการโหลด Models:', error);
+                
+                let errorMessage = 'ไม่สามารถโหลด Face-API Models ได้\n\n';
+                
+                if (error.message.includes('face-api.js')) {
+                    errorMessage += 'สาเหตุ: ไม่สามารถโหลด Face-API.js ได้\n';
+                    errorMessage += 'วิธีแก้ไข:\n';
+                    errorMessage += '1. ตรวจสอบไฟล์ js/face-api.min.js ว่ามีอยู่\n';
+                    errorMessage += '2. ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต\n';
+                    errorMessage += '3. ลองรีเฟรชหน้าเว็บ\n';
+                } else if (error.message.includes('models')) {
+                    errorMessage += 'สาเหตุ: ไม่สามารถโหลด AI Models ได้\n';
+                    errorMessage += 'วิธีแก้ไข:\n';
+                    errorMessage += '1. ตรวจสอบโฟลเดอร์ models/ ว่ามีไฟล์ครบ\n';
+                    errorMessage += '2. ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต\n';
+                    errorMessage += '3. ลองรีเฟรชหน้าเว็บ\n';
+                } else {
+                    errorMessage += 'สาเหตุ: ' + error.message + '\n';
+                    errorMessage += 'กรุณาลองใหม่อีกครั้ง';
+                }
+                
+                alert(errorMessage);
+            }
+        }
+        
+        // ตรวจจับใบหน้าจริงในภาพ
+        async function detectRealFace() {
+            if (!backgroundImage || !modelsLoaded) {
+                alert('กรุณาอัปโหลดภาพและรอให้โหลด Models เสร็จก่อน');
+                return;
+            }
+            
+            if (isDetecting) {
+                alert('กำลังประมวลผล กรุณารอสักครู่...');
+                return;
+            }
+            
+            try {
+                isDetecting = true;
+                document.getElementById('detectFaceBtn').textContent = '🔄 กำลังประมวลผล...';
+                
+                // สร้าง Canvas สำหรับ Face Detection
+                const detectionCanvas = document.createElement('canvas');
+                detectionCanvas.width = backgroundImage.width;
+                detectionCanvas.height = backgroundImage.height;
+                const detectionCtx = detectionCanvas.getContext('2d');
+                detectionCtx.drawImage(backgroundImage, 0, 0);
+                
+                // ตรวจจับใบหน้า
+                const detections = await faceapi.detectAllFaces(detectionCanvas, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+                
+                if (detections.length === 0) {
+                    alert('ไม่พบใบหน้าในภาพ กรุณาเลือกภาพที่มีใบหน้าชัดเจน');
+                    return;
+                }
+                
+                if (detections.length > 1) {
+                    alert(`พบใบหน้า ${detections.length} ใบหน้า ระบบจะใช้ใบหน้าแรก`);
+                }
+                
+                // ใช้ใบหน้าแรก
+                const detection = detections[0];
+                realLandmarks = detection.landmarks.positions.map(pos => ({
+                    x: pos.x,
+                    y: pos.y
+                }));
+                
+                // แสดงปุ่มสลับ
+                document.getElementById('toggleRealBtn').style.display = 'inline-block';
+                
+                // เปิดใช้งานปุ่มควบคุมต่างๆ
+                document.querySelectorAll('.controls button').forEach(btn => {
+                    if (!btn.id.includes('detectFaceBtn') && !btn.id.includes('toggleRealBtn')) {
+                        btn.disabled = false;
+                    }
+                });
+                
+                // วาดจุดสำคัญจริง
+                useRealLandmarks = true;
+                drawRealLandmarks();
+                
+                alert(`ตรวจจับใบหน้าสำเร็จ! พบจุดสำคัญ ${realLandmarks.length} จุด\n\nตอนนี้คุณสามารถ:\n• แสดง/ซ่อนป้ายชื่อ\n• แสดง/ซ่อนเส้นเชื่อม\n• เพิ่ม/ลดขนาดจุด\n• สลับระหว่างจุดจริง/ตัวอย่าง`);
+                
+            } catch (error) {
+                console.error('เกิดข้อผิดพลาดในการตรวจจับใบหน้า:', error);
+                alert('เกิดข้อผิดพลาดในการตรวจจับใบหน้า: ' + error.message);
+            } finally {
+                isDetecting = false;
+                document.getElementById('detectFaceBtn').textContent = '🎯 ตรวจจับใบหน้าจริง';
+            }
+        }
+        
+        // สลับระหว่างจุดจริงและจุดตัวอย่าง
+        function toggleRealLandmarks() {
+            useRealLandmarks = !useRealLandmarks;
+            
+            if (useRealLandmarks) {
+                document.getElementById('toggleRealBtn').textContent = '🔄 ใช้จุดตัวอย่าง';
+                if (realLandmarks) {
+                    drawRealLandmarks();
+                }
+            } else {
+                document.getElementById('toggleRealBtn').textContent = '🔄 ใช้จุดจริง';
+                if (backgroundImage) {
+                    drawBackgroundImage();
+                    const adjustedLandmarks = createAdjustedLandmarks();
+                    drawAdjustedLandmarks(adjustedLandmarks);
+                } else {
+                    drawLandmarks();
+                }
+            }
+        }
+        
+        // วาดจุดสำคัญจริง
+        function drawRealLandmarks() {
+            if (!realLandmarks || !backgroundImage) return;
+            
+            // วาดภาพพื้นหลัง
+            drawBackgroundImage();
+            
+            // วาดจุดสำคัญจริง
+            realLandmarks.forEach((point, index) => {
+                const size = getPointSize(index); // ใช้ขนาดที่เหมาะสม
+                
+                ctx.beginPath();
+                ctx.arc(point.x * imageScale + imageOffsetX, point.y * imageScale + imageOffsetY, size, 0, 2 * Math.PI);
+                
+                // กำหนดสีตามกลุ่ม
+                const color = getPointColor(index);
+                ctx.fillStyle = color;
+                ctx.fill();
+                
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 0.5; // ลดความหนาของเส้นขอบ
+                ctx.stroke();
+                
+                // แสดงป้ายชื่อถ้าเปิด
+                if (showLabels) {
+                    ctx.fillStyle = '#333';
+                    ctx.font = '8px Arial'; // ลดขนาดฟอนต์
+                    ctx.textAlign = 'center';
+                    ctx.fillText(index.toString(), point.x * imageScale + imageOffsetX, point.y * imageScale + imageOffsetY - size - 3);
+                }
+            });
+            
+            // แสดงเส้นเชื่อมถ้าเปิด
+            if (showConnections) {
+                drawRealConnections();
+            }
+        }
+        
+        // วาดเส้นเชื่อมสำหรับจุดจริง
+        function drawRealConnections() {
+            if (!realLandmarks) return;
+            
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            
+            // เชื่อม Jawline (จุด 0-16)
+            drawRealLineSequence(0, 16);
+            
+            // เชื่อม Right Eyebrow (จุด 17-21)
+            drawRealLineSequence(17, 21);
+            
+            // เชื่อม Left Eyebrow (จุด 22-26)
+            drawRealLineSequence(22, 26);
+            
+            // เชื่อม Right Eye (จุด 36-41)
+            drawRealEyeConnections(36, 41);
+            
+            // เชื่อม Left Eye (จุด 42-47)
+            drawRealEyeConnections(42, 47);
+            
+            // เชื่อมปากบน (จุด 48-55)
+            drawRealLineSequence(48, 55);
+            
+            // เชื่อมปากล่าง (จุด 56-63)
+            drawRealLineSequence(56, 63);
+        }
+        
+        // วาดเส้นเชื่อมตามลำดับสำหรับจุดจริง
+        function drawRealLineSequence(start, end) {
+            for (let i = start; i < end; i++) {
+                if (realLandmarks[i] && realLandmarks[i + 1]) {
+                    const startX = realLandmarks[i].x * imageScale + imageOffsetX;
+                    const startY = realLandmarks[i].y * imageScale + imageOffsetY;
+                    const endX = realLandmarks[i + 1].x * imageScale + imageOffsetX;
+                    const endY = realLandmarks[i + 1].y * imageScale + imageOffsetY;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(endX, endY);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // วาดเส้นเชื่อมตาสำหรับจุดจริง
+        function drawRealEyeConnections(start, end) {
+            drawRealLineSequence(start, end);
+            
+            if (realLandmarks[start] && realLandmarks[end]) {
+                const startX = realLandmarks[start].x * imageScale + imageOffsetX;
+                const startY = realLandmarks[start].y * imageScale + imageOffsetY;
+                const endX = realLandmarks[end].x * imageScale + imageOffsetX;
+                const endY = realLandmarks[end].y * imageScale + imageOffsetY;
+                
+                ctx.beginPath();
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(startX, startY);
+                ctx.stroke();
+            }
+        }
+        
+        // ฟังก์ชันจัดการการอัปโหลดภาพ
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // ตรวจสอบขนาดไฟล์ (1 GB = 1073741824 bytes)
+            const maxSize = 1073741824;
+            if (file.size > maxSize) {
+                alert('ไฟล์มีขนาดใหญ่เกินไป กรุณาเลือกไฟล์ที่มีขนาดไม่เกิน 1 GB');
+                return;
+            }
+            
+            // ตรวจสอบประเภทไฟล์
+            if (!file.type.startsWith('image/')) {
+                alert('กรุณาเลือกไฟล์ภาพเท่านั้น (JPG, PNG, GIF)');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    backgroundImage = img;
+                    loadImageToCanvas();
+                    showImageContainer();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // ฟังก์ชันโหลดภาพลง Canvas
+        function loadImageToCanvas() {
+            if (!backgroundImage) return;
+            
+            // คำนวณขนาดและตำแหน่งที่เหมาะสม
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const imgWidth = backgroundImage.width;
+            const imgHeight = backgroundImage.height;
+            
+            // คำนวณ scale ที่เหมาะสม
+            const scaleX = canvasWidth / imgWidth;
+            const scaleY = canvasHeight / imgHeight;
+            imageScale = Math.min(scaleX, scaleY) * 0.9; // 90% ของขนาด Canvas
+            
+            // คำนวณตำแหน่งกลาง
+            imageOffsetX = (canvasWidth - imgWidth * imageScale) / 2;
+            imageOffsetY = (canvasHeight - imgHeight * imageScale) / 2;
+            
+            // วาดภาพลง Canvas
+            drawBackgroundImage();
+            
+            // ปรับตำแหน่งจุดสำคัญตามขนาดภาพ
+            adjustLandmarksPosition();
+        }
+        
+        // ฟังก์ชันวาดภาพพื้นหลัง
+        function drawBackgroundImage() {
+            if (!backgroundImage) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(
+                backgroundImage,
+                imageOffsetX, imageOffsetY,
+                backgroundImage.width * imageScale,
+                backgroundImage.height * imageScale
+            );
+        }
+        
+        // ฟังก์ชันปรับตำแหน่งจุดสำคัญตามขนาดภาพ
+        function adjustLandmarksPosition() {
+            if (!backgroundImage) return;
+            
+            // สร้างจุดสำคัญใหม่ที่ปรับตามขนาดภาพ
+            const adjustedLandmarks = createAdjustedLandmarks();
+            
+            // วาดจุดสำคัญใหม่
+            drawAdjustedLandmarks(adjustedLandmarks);
+        }
+        
+        // ฟังก์ชันสร้างจุดสำคัญที่ปรับแล้ว
+        function createAdjustedLandmarks() {
+            const baseWidth = 800; // ขนาดฐานเดิม
+            const baseHeight = 600;
+            
+            return landmarks.map(point => ({
+                x: (point.x / baseWidth) * canvas.width,
+                y: (point.y / baseHeight) * canvas.height,
+                label: point.label
+            }));
+        }
+        
+        // ฟังก์ชันแสดง Container ภาพ
+        function showImageContainer() {
+            imageContainer.style.display = 'block';
+            faceImage.src = backgroundImage.src;
+        }
+        
+        // ฟังก์ชันปรับขนาดจุด
+        function adjustPointSize(action) {
+            if (action === 'increase') {
+                pointSize = Math.min(pointSize + 0.5, 5);
+            } else if (action === 'decrease') {
+                pointSize = Math.max(pointSize - 0.5, 0.5);
+            }
+            
+            // วาดใหม่ตามประเภทที่กำลังใช้
+            if (useRealLandmarks && realLandmarks) {
+                // ใช้จุดจริง
+                drawRealLandmarks();
+            } else if (backgroundImage) {
+                // ใช้จุดที่ปรับแล้ว
+                drawBackgroundImage();
+                const adjustedLandmarks = createAdjustedLandmarks();
+                drawAdjustedLandmarks(adjustedLandmarks);
+            } else {
+                // ใช้จุดตัวอย่าง
+                drawLandmarks();
+            }
+        }
+        
+        // ฟังก์ชันรีเซ็ตภาพ
+        function resetImage() {
+            backgroundImage = null;
+            imageScale = 1;
+            imageOffsetX = 0;
+            imageOffsetY = 0;
+            pointSize = 2; // รีเซ็ตเป็นขนาดเริ่มต้นใหม่
+            imageContainer.style.display = 'none';
+            clearCanvas();
+        }
+        
+        // ฟังก์ชันวาดจุดสำคัญที่ปรับแล้ว
+        function drawAdjustedLandmarks(adjustedLandmarks) {
+            if (!adjustedLandmarks || adjustedLandmarks.length === 0) return;
+            
+            adjustedLandmarks.forEach((point, index) => {
+                const size = getPointSize(index); // ใช้ขนาดที่เหมาะสม
+                
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, size, 0, 2 * Math.PI);
+                
+                // กำหนดสีตามกลุ่ม
+                const color = getPointColor(index);
+                ctx.fillStyle = color;
+                ctx.fill();
+                
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 0.5; // ลดความหนาของเส้นขอบ
+                ctx.stroke();
+                
+                // แสดงป้ายชื่อถ้าเปิด
+                if (showLabels) {
+                    ctx.fillStyle = '#333';
+                    ctx.font = '8px Arial'; // ลดขนาดฟอนต์
+                    ctx.textAlign = 'center';
+                    ctx.fillText(index.toString(), point.x, point.y - size - 3);
+                }
+            });
+            
+            // แสดงเส้นเชื่อมถ้าเปิด
+            if (showConnections) {
+                drawAdjustedConnections(adjustedLandmarks);
+            }
+        }
+        
+        // ฟังก์ชันวาดเส้นเชื่อมที่ปรับแล้ว
+        function drawAdjustedConnections(adjustedLandmarks) {
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            
+            // เชื่อม Jawline (จุด 0-16)
+            drawLineSequence(adjustedLandmarks, 0, 16);
+            
+            // เชื่อม Right Eyebrow (จุด 17-21)
+            drawLineSequence(adjustedLandmarks, 17, 21);
+            
+            // เชื่อม Left Eyebrow (จุด 22-26)
+            drawLineSequence(adjustedLandmarks, 22, 26);
+            
+            // เชื่อม Right Eye (จุด 36-41)
+            drawEyeConnections(adjustedLandmarks, 36, 41);
+            
+            // เชื่อม Left Eye (จุด 42-47)
+            drawEyeConnections(adjustedLandmarks, 42, 47);
+            
+            // เชื่อมปากบน (จุด 48-55)
+            drawLineSequence(adjustedLandmarks, 48, 55);
+            
+            // เชื่อมปากล่าง (จุด 56-63)
+            drawLineSequence(adjustedLandmarks, 56, 63);
+        }
+        
+        // ฟังก์ชันวาดเส้นเชื่อมตามลำดับ
+        function drawLineSequence(landmarks, start, end) {
+            for (let i = start; i < end; i++) {
+                if (landmarks[i] && landmarks[i + 1]) {
+                    ctx.beginPath();
+                    ctx.moveTo(landmarks[i].x, landmarks[i].y);
+                    ctx.lineTo(landmarks[i + 1].x, landmarks[i + 1].y);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // ฟังก์ชันวาดเส้นเชื่อมตา
+        function drawEyeConnections(landmarks, start, end) {
+            drawLineSequence(landmarks, start, end);
+            
+            if (landmarks[start] && landmarks[end]) {
+                ctx.beginPath();
+                ctx.moveTo(landmarks[end].x, landmarks[end].y);
+                ctx.lineTo(landmarks[start].x, landmarks[start].y);
+                ctx.stroke();
+            }
+        }
+        
+        // ฟังก์ชันรับสีตามกลุ่มจุด
+        function getPointColor(index) {
+            if (index <= 16) return '#ff6b6b';      // Jawline - แดง
+            if (index <= 21) return '#4ecdc4';      // Right Eyebrow - เขียว
+            if (index <= 26) return '#45b7d1';      // Left Eyebrow - น้ำเงิน
+            if (index <= 35) return '#96ceb4';      // Nose - เขียวอ่อน
+            if (index <= 41) return '#feca57';      // Right Eye - เหลือง
+            if (index <= 47) return '#ff9ff3';      // Left Eye - ชมพู
+            return '#a55eea';                        // Mouth - ม่วง
+        }
+        
+        // กำหนดตำแหน่งจุดสำคัญ 68 จุด (ตัวอย่าง)
+        const landmarks = [
+            // Jawline (ขอบกราม) - 17 จุด
+            {x: 400, y: 500, label: "0: คาง"},      // 0: คาง
+            {x: 380, y: 490, label: "1: ด้านล่างกราม"}, // 1-2: ด้านล่างของกราม
+            {x: 420, y: 490, label: "2: ด้านล่างกราม"},
+            {x: 360, y: 470, label: "3: ด้านข้างกราม"}, // 3-4: ด้านข้างของกราม
+            {x: 440, y: 470, label: "4: ด้านข้างกราม"},
+            {x: 340, y: 450, label: "5: ด้านบนกราม"},  // 5-6: ด้านบนของกราม
+            {x: 460, y: 450, label: "6: ด้านบนกราม"},
+            {x: 320, y: 430, label: "7: ด้านข้างกราม"}, // 7-8: ด้านข้างของกราม
+            {x: 480, y: 430, label: "8: ด้านข้างกราม"},
+            {x: 300, y: 410, label: "9: ด้านบนกราม"},  // 9-10: ด้านบนของกราม
+            {x: 500, y: 410, label: "10: ด้านบนกราม"},
+            {x: 280, y: 390, label: "11: ด้านข้างกราม"}, // 11-12: ด้านข้างของกราม
+            {x: 520, y: 390, label: "12: ด้านข้างกราม"},
+            {x: 260, y: 370, label: "13: ด้านบนกราม"},  // 13-14: ด้านบนของกราม
+            {x: 540, y: 370, label: "14: ด้านบนกราม"},
+            {x: 240, y: 350, label: "15: ด้านข้างกราม"}, // 15-16: ด้านข้างของกราม (ใกล้หู)
+            {x: 560, y: 350, label: "16: ด้านข้างกราม"},
+            
+            // Right Eyebrow (คิ้วขวา) - 5 จุด
+            {x: 480, y: 200, label: "17: ปลายคิ้วขวาด้านใน"}, // 17: ปลายคิ้วด้านใน (ใกล้จมูก)
+            {x: 500, y: 195, label: "18: กลางคิ้วขวาด้านใน"}, // 18: กลางคิ้วด้านใน
+            {x: 520, y: 190, label: "19: กลางคิ้วขวา"},      // 19: กลางคิ้ว
+            {x: 540, y: 195, label: "20: กลางคิ้วขวาด้านนอก"}, // 20: กลางคิ้วด้านนอก
+            {x: 560, y: 200, label: "21: ปลายคิ้วขวาด้านนอก"}, // 21: ปลายคิ้วด้านนอก (ใกล้หู)
+            
+            // Left Eyebrow (คิ้วซ้าย) - 5 จุด
+            {x: 320, y: 200, label: "22: ปลายคิ้วซ้ายด้านใน"}, // 22: ปลายคิ้วด้านใน (ใกล้จมูก)
+            {x: 300, y: 195, label: "23: กลางคิ้วซ้ายด้านใน"}, // 23: กลางคิ้วด้านใน
+            {x: 280, y: 190, label: "24: กลางคิ้วซ้าย"},      // 24: กลางคิ้ว
+            {x: 260, y: 195, label: "25: กลางคิ้วซ้ายด้านนอก"}, // 25: กลางคิ้วด้านนอก
+            {x: 240, y: 200, label: "26: ปลายคิ้วซ้ายด้านนอก"}, // 26: ปลายคิ้วด้านนอก (ใกล้หู)
+            
+            // Nose (จมูก) - 9 จุด
+            {x: 400, y: 280, label: "27: ปลายจมูก"},         // 27: ปลายจมูก
+            {x: 400, y: 300, label: "28: ปลายจมูกด้านล่าง"}, // 28: ปลายจมูกด้านล่าง
+            {x: 390, y: 290, label: "29: ปลายจมูกด้านซ้าย"}, // 29: ปลายจมูกด้านซ้าย
+            {x: 410, y: 290, label: "30: ปลายจมูกด้านขวา"}, // 30: ปลายจมูกด้านขวา
+            {x: 400, y: 320, label: "31: จุดเชื่อมจมูก-ปาก"}, // 31: จุดเชื่อมระหว่างจมูกกับริมฝีปากบน
+            {x: 390, y: 325, label: "32: จุดเชื่อมซ้าย"},     // 32: จุดเชื่อมด้านซ้าย
+            {x: 410, y: 325, label: "33: จุดเชื่อมขวา"},      // 33: จุดเชื่อมด้านขวา
+            {x: 400, y: 330, label: "34: จุดเชื่อมล่าง"},     // 34: จุดเชื่อมด้านล่าง
+            {x: 400, y: 335, label: "35: จุดเชื่อมล่าง"},     // 35: จุดเชื่อมด้านล่าง
+            
+            // Right Eye (ตาขวา) - 6 จุด
+            {x: 480, y: 250, label: "36: มุมตาขวาด้านใน"},   // 36: มุมตาด้านใน (ใกล้จมูก)
+            {x: 490, y: 240, label: "37: มุมตาขวาด้านบน"},   // 37: มุมตาด้านบน
+            {x: 520, y: 250, label: "38: มุมตาขวาด้านนอก"},  // 38: มุมตาด้านนอก (ใกล้หู)
+            {x: 490, y: 260, label: "39: มุมตาขวาด้านล่าง"}, // 39: มุมตาด้านล่าง
+            {x: 480, y: 260, label: "40: มุมตาขวาด้านในล่าง"}, // 40: มุมตาด้านในล่าง
+            {x: 480, y: 240, label: "41: มุมตาขวาด้านบนใน"}, // 41: มุมตาด้านบนใน
+            
+            // Left Eye (ตาซ้าย) - 6 จุด
+            {x: 320, y: 250, label: "42: มุมตาซ้ายด้านใน"},  // 42: มุมตาด้านใน (ใกล้จมูก)
+            {x: 310, y: 240, label: "43: มุมตาซ้ายด้านบน"},  // 43: มุมตาด้านบน
+            {x: 280, y: 250, label: "44: มุมตาซ้ายด้านนอก"}, // 44: มุมตาด้านนอก (ใกล้หู)
+            {x: 310, y: 260, label: "45: มุมตาซ้ายด้านล่าง"}, // 45: มุมตาด้านล่าง
+            {x: 320, y: 260, label: "46: มุมตาซ้ายด้านในล่าง"}, // 46: มุมตาด้านในล่าง
+            {x: 320, y: 240, label: "47: มุมตาซ้ายด้านบนใน"}, // 47: มุมตาด้านบนใน
+            
+            // Mouth (ปาก) - 20 จุด
+            // ริมฝีปากบน (8 จุด)
+            {x: 320, y: 380, label: "48: มุมปากซ้าย"},       // 48: มุมปากด้านซ้าย
+            {x: 340, y: 375, label: "49: ริมฝีปากบนซ้าย"},   // 49: ริมฝีปากบนด้านซ้าย
+            {x: 380, y: 370, label: "50: ริมฝีปากบนกลาง"},   // 50: ริมฝีปากบนกลาง
+            {x: 420, y: 375, label: "51: ริมฝีปากบนขวา"},   // 51: ริมฝีปากบนด้านขวา
+            {x: 480, y: 380, label: "52: มุมปากขวา"},        // 52: มุมปากด้านขวา
+            {x: 460, y: 375, label: "53: ริมฝีปากบนขวา"},   // 53: ริมฝีปากบนด้านขวา
+            {x: 420, y: 370, label: "54: ริมฝีปากบนกลาง"},   // 54: ริมฝีปากบนกลาง
+            {x: 380, y: 375, label: "55: ริมฝีปากบนซ้าย"},   // 55: ริมฝีปากบนด้านซ้าย
+            
+            // ริมฝีปากล่าง (8 จุด)
+            {x: 320, y: 400, label: "56: มุมปากซ้าย"},       // 56: มุมปากด้านซ้าย
+            {x: 340, y: 405, label: "57: ริมฝีปากล่างซ้าย"}, // 57: ริมฝีปากล่างด้านซ้าย
+            {x: 380, y: 410, label: "58: ริมฝีปากล่างกลาง"}, // 58: ริมฝีปากล่างกลาง
+            {x: 420, y: 405, label: "59: ริมฝีปากล่างขวา"}, // 59: ริมฝีปากล่างด้านขวา
+            {x: 480, y: 400, label: "60: มุมปากขวา"},        // 60: มุมปากด้านขวา
+            {x: 460, y: 405, label: "61: ริมฝีปากล่างขวา"}, // 61: ริมฝีปากล่างด้านขวา
+            {x: 420, y: 410, label: "62: ริมฝีปากล่างกลาง"}, // 62: ริมฝีปากล่างกลาง
+            {x: 380, y: 405, label: "63: ริมฝีปากล่างซ้าย"}, // 63: ริมฝีปากล่างด้านซ้าย
+            
+            // ริมฝีปากด้านใน (4 จุด)
+            {x: 380, y: 385, label: "64: ริมฝีปากด้านในบน"}, // 64: ริมฝีปากด้านในบน
+            {x: 420, y: 385, label: "65: ริมฝีปากด้านในขวา"}, // 65: ริมฝีปากด้านในขวา
+            {x: 380, y: 395, label: "66: ริมฝีปากด้านในล่าง"}, // 66: ริมฝีปากด้านในล่าง
+            {x: 340, y: 385, label: "67: ริมฝีปากด้านในซ้าย"} // 67: ริมฝีปากด้านในซ้าย
+        ];
+        
+        // ฟังก์ชันกำหนดขนาดจุดตามประเภท
+        function getPointSize(index) {
+            if (index >= 36 && index <= 47) {
+                return 1.5; // ตา - เล็กที่สุด
+            } else if (index >= 48 && index <= 67) {
+                return 2; // ปาก - เล็ก
+            } else if (index >= 17 && index <= 26) {
+                return 2.5; // คิ้ว - กลาง
+            } else if (index >= 27 && index <= 35) {
+                return 2.5; // จมูก - กลาง
+            } else {
+                return 3; // ขอบกราม - ใหญ่ที่สุด
+            }
+        }
+        
+        // ฟังก์ชันวาดจุดสำคัญ
+        function drawLandmarks() {
+            clearCanvas();
+            
+            // วาดจุดสำคัญแต่ละจุด
+            landmarks.forEach((point, index) => {
+                const size = getPointSize(index);
+                
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, size, 0, 2 * Math.PI);
+                
+                // กำหนดสีตามกลุ่ม
+                if (index <= 16) {
+                    ctx.fillStyle = '#ff6b6b'; // Jawline - แดง
+                } else if (index <= 21) {
+                    ctx.fillStyle = '#4ecdc4'; // Right Eyebrow - เขียว
+                } else if (index <= 26) {
+                    ctx.fillStyle = '#45b7d1'; // Left Eyebrow - น้ำเงิน
+                } else if (index <= 35) {
+                    ctx.fillStyle = '#96ceb4'; // Nose - เขียวอ่อน
+                } else if (index <= 41) {
+                    ctx.fillStyle = '#feca57'; // Right Eye - เหลือง
+                } else if (index <= 47) {
+                    ctx.fillStyle = '#ff9ff3'; // Left Eye - ชมพู
+                } else {
+                    ctx.fillStyle = '#a55eea'; // Mouth - ม่วง
+                }
+                
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 0.5; // ลดความหนาของเส้นขอบ
+                ctx.stroke();
+            });
+        }
+        
+        // ฟังก์ชันวาดพร้อมป้ายชื่อ
+        function drawWithLabels() {
+            if (useRealLandmarks && realLandmarks) {
+                // ใช้จุดจริง
+                showLabels = true;
+                drawRealLandmarks();
+            } else if (backgroundImage) {
+                // ใช้จุดที่ปรับแล้ว
+                showLabels = true;
+                drawBackgroundImage();
+                const adjustedLandmarks = createAdjustedLandmarks();
+                drawAdjustedLandmarks(adjustedLandmarks);
+            } else {
+                // ใช้จุดตัวอย่าง
+                showLabels = true;
+                drawLandmarks();
+            }
+        }
+        
+                // ฟังก์ชันวาดพร้อมเส้นเชื่อม
+        function drawWithConnections() {
+            if (useRealLandmarks && realLandmarks) {
+                // ใช้จุดจริง
+                showConnections = true;
+                drawRealLandmarks();
+            } else if (backgroundImage) {
+                // ใช้จุดที่ปรับแล้ว
+                showConnections = true;
+                drawBackgroundImage();
+                const adjustedLandmarks = createAdjustedLandmarks();
+                drawAdjustedLandmarks(adjustedLandmarks);
+            } else {
+                // ใช้จุดตัวอย่าง
+                showConnections = true;
+                drawLandmarks();
+            }
+        }
+        
+        // ฟังก์ชันล้าง Canvas
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // ฟังก์ชันล้างและวาดใหม่
+        function redrawCanvas() {
+            if (useRealLandmarks && realLandmarks) {
+                // ใช้จุดจริง
+                drawRealLandmarks();
+            } else if (backgroundImage) {
+                // ใช้จุดที่ปรับแล้ว
+                drawBackgroundImage();
+                const adjustedLandmarks = createAdjustedLandmarks();
+                drawAdjustedLandmarks(adjustedLandmarks);
+            } else {
+                // ใช้จุดตัวอย่าง
+                drawLandmarks();
+            }
+        }
+        
+        // วาดจุดสำคัญเมื่อโหลดหน้า
+        window.onload = function() {
+            drawLandmarks();
+            // โหลด Face-API Models
+            loadFaceModels();
+            
+            // ตรวจสอบไฟล์ Models ที่จำเป็น
+            checkRequiredModels();
+            
+            // ปิดใช้งานปุ่มควบคุมตอนเริ่มต้น
+            disableControlButtons();
+        };
+        
+        // ปิดใช้งานปุ่มควบคุม
+        function disableControlButtons() {
+            const controlButtons = [
+                'drawLandmarks', 'drawWithLabels', 'drawWithConnections', 
+                'clearCanvas', 'adjustPointSize', 'resetImage'
+            ];
+            
+            controlButtons.forEach(btnId => {
+                const btn = document.querySelector(`button[onclick*="${btnId}"]`);
+                if (btn) {
+                    btn.disabled = true;
+                }
+            });
+        }
+        
+        // ตรวจสอบไฟล์ Models ที่จำเป็น
+        function checkRequiredModels() {
+            const requiredModels = [
+                'models/tiny_face_detector_model-weights_manifest.json',
+                'models/face_landmark_68_model-weights_manifest.json',
+                'models/face_recognition_model-weights_manifest.json'
+            ];
+            
+            console.log('กำลังตรวจสอบไฟล์ Models...');
+            
+            requiredModels.forEach(modelPath => {
+                fetch(modelPath)
+                    .then(response => {
+                        if (response.ok) {
+                            console.log(`✅ ${modelPath} พร้อมใช้งาน`);
+                        } else {
+                            console.warn(`⚠️ ${modelPath} ไม่พบ`);
+                        }
+                    })
+                    .catch(error => {
+                        console.error(`❌ ${modelPath} ไม่สามารถเข้าถึงได้:`, error);
+                    });
+            });
+        }
+        
+        // โหลด Models ใหม่
+        async function reloadModels() {
+            try {
+                console.log('กำลังโหลด Models ใหม่...');
+                
+                // รีเซ็ตสถานะ
+                modelsLoaded = false;
+                document.getElementById('detectFaceBtn').disabled = true;
+                document.getElementById('reloadModelsBtn').textContent = '🔄 กำลังโหลด...';
+                
+                // โหลด Models ใหม่
+                await loadFaceModels();
+                
+                // อัปเดตปุ่ม
+                document.getElementById('reloadModelsBtn').textContent = '✅ โหลดสำเร็จ';
+                setTimeout(() => {
+                    document.getElementById('reloadModelsBtn').textContent = '🔄 โหลด Models ใหม่';
+                }, 2000);
+                
+            } catch (error) {
+                console.error('เกิดข้อผิดพลาดในการโหลด Models ใหม่:', error);
+                document.getElementById('reloadModelsBtn').textContent = '❌ โหลดล้มเหลว';
+                setTimeout(() => {
+                    document.getElementById('reloadModelsBtn').textContent = '🔄 โหลด Models ใหม่';
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html> 
