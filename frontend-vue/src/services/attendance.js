@@ -81,5 +81,34 @@ export const attendanceService = {
     } catch (error) {
       throw error
     }
+  },
+
+  // Validate if student has face registration (in studentface)
+  async validateFaceEnrollment({ student_id, firstname, lastname }) {
+    try {
+      const response = await api.post('/attendance/validate-face', {
+        student_id,
+        firstname,
+        lastname
+      })
+      return response.data // { found: boolean }
+    } catch (error) {
+      throw error
+    }
+  },
+
+  // Check duplicate submission for this QR session and student
+  async checkDuplicateSubmission({ qr_token, student_code, firstname, lastname }) {
+    try {
+      const response = await api.post('/attendance/check-duplicate-submission', {
+        qr_token,
+        student_code,
+        firstname,
+        lastname
+      })
+      return response.data // { duplicate: boolean }
+    } catch (error) {
+      throw error
+    }
   }
 } 

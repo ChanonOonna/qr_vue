@@ -92,4 +92,4 @@ CREATE INDEX idx_student_attendance_time ON student_attendance(checkin_time);
 CREATE INDEX idx_student_submissions_student ON student_submissions(student_id);
 CREATE INDEX idx_student_submissions_teacher ON student_submissions(teacher_id);
 CREATE INDEX idx_student_submissions_time ON student_submissions(submission_time);
-CREATE INDEX idx_studentface_student_id ON studentface(student_id);
+CREATE INDEX idx_studentface_student_id ON studentface(student_id); 
