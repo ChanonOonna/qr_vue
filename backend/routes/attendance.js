@@ -113,7 +113,7 @@ router.post('/validate-student', async (req, res) => {
     // Check if student exists in face registration
     const { pool } = require('../db');
     const [faceRows] = await pool.execute(
-      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ? AND last_name = ?',
+      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ?ScanQR.vue AND last_name = ?',
       [student_id, firstname, lastname]
     );
     
@@ -196,11 +196,16 @@ router.post('/student/check', async (req, res) => {
 // Student check-in (for QR scanning)
 router.post('/checkin', async (req, res) => {
   try {
-    const { qr_token, student_id, firstname, lastname, face_descriptor } = req.body;
+    const { qr_token, student_id, firstname, lastname, face_descriptor, ip_address } = req.body;
     
     if (!qr_token || !student_id || !firstname || !lastname) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+    
+    // Get client IP address (from frontend or fallback to server IP)
+    const clientIP = ip_address || req.ip || req.connection.remoteAddress || req.socket.remoteAddress || 'unknown';
+    console.log('Client IP from frontend:', ip_address);
+    console.log('Client IP fallback:', clientIP);
     
     // Get QR session by token
     const session = await QRCodeSession.getByToken(qr_token);
@@ -224,7 +229,7 @@ router.post('/checkin', async (req, res) => {
       return res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
     }
     
-    // ตรวจสอบกับฐานข้อมูล studentface
+    // ตรวจสอบกับฐานข้อมูล studentface (แค่เช็คว่ามีข้อมูล)
     const { pool } = require('../db');
     console.log('DEBUG FACE:', student_id, firstname, lastname);
     const [faceRows] = await pool.execute(
@@ -342,9 +347,6 @@ router.post('/checkin', async (req, res) => {
     await Attendance.create(attendanceData);
 
     // เพิ่มบันทึกลง student_submissions เฉพาะถ้ายังไม่มีข้อมูลนี้
-    // 1. หา qr_session_id จาก session.id
-    // 2. หา student_id จาก student.id
-    // 3. เช็คว่ามี submission นี้อยู่แล้วหรือยัง
     const [existingSubRows] = await pool.execute(`
       SELECT * FROM qr_sessions
       INNER JOIN student_submissions ON qr_sessions.id = student_submissions.qr_session_id
@@ -365,14 +367,15 @@ router.post('/checkin', async (req, res) => {
       qr_session_id: session.id,
       firstname,
       lastname,
-      ip_address: req.ip,
+      ip_address: clientIP, // ใช้ IP ที่ส่งมาจาก frontend
       user_agent: req.headers['user-agent']
     });
     
     res.json({
       message: 'Check-in successful',
       status,
-      checkin_time: now
+      checkin_time: now,
+      ip_address: clientIP
     });
   } catch (error) {
     console.error('Error during check-in:', error);

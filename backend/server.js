@@ -28,6 +28,9 @@ const userRoutes = require('./routes/users');
 
 const app = express();
 
+// Trust proxy for accurate IP addresses
+app.set('trust proxy', true);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
