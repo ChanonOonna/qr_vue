@@ -94,7 +94,7 @@ export default {
     }
 
     const goToScanQR = () => {
-      router.push('/scanqr')
+      router.push('/scan')
     }
 
     onMounted(async () => {
