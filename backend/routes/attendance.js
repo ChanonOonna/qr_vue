@@ -223,6 +223,13 @@ router.post('/checkin', async (req, res) => {
       return res.status(400).json({ error: 'QR session has expired' });
     }
     
+    // Add: block before start_time
+    const nowForStartCheck = new Date();
+    const startTimeForStartCheck = new Date(session.start_time);
+    if (nowForStartCheck < startTimeForStartCheck) {
+      return res.status(400).json({ error: 'ยังไม่ถึงเวลาเริ่มเช็คชื่อ' });
+    }
+    
     // Check if student already checked in (by id, firstname, lastname)
     const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, student_id, firstname, lastname);
     if (existingAttendance) {
@@ -513,6 +520,11 @@ router.get('/session-info/:qr_token', async (req, res) => {
     if (now < startTime) {
       return res.status(400).json({ error: 'ยังไม่ถึงเวลาเริ่มเช็คชื่อ' });
     }
+    // เช็คหมดเวลา
+    const expireTime = new Date(session.expire_time);
+    if (now > expireTime) {
+      return res.status(400).json({ error: 'QR session has expired' });
+    }
     res.json({
       teacher_code: session.teacher_code,
       description: session.description,
@@ -522,7 +534,9 @@ router.get('/session-info/:qr_token', async (req, res) => {
       year: session.year,
       semester: session.semester,
       email: session.teacher_email,
-      teacher_id: session.teacher_id
+      teacher_id: session.teacher_id,
+      start_time: session.start_time,
+      late_minute: session.late_minute
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get session info' });

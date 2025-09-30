@@ -427,10 +427,10 @@ export default {
         const qrToken = qrData.trim()
         console.log('QR Token scanned:', qrToken)
         
-        // Get session info using QR token
-        const response = await attendanceService.getSessionByToken(qrToken)
-        console.log('Session response:', response)
-        sessionInfo.value = response.session
+        // Get session info using QR token (enforce start time at backend)
+        const info = await attendanceService.getPublicSessionInfo(qrToken)
+        sessionInfo.value = { ...info, qr_token: qrToken }
+        manualToken.value = qrToken
         
         resultMessage.value = 'พบ QR Code แล้ว กรุณากรอกข้อมูลนักเรียน'
         resultClass.value = 'result-success'

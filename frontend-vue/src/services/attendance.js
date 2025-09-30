@@ -21,6 +21,16 @@ export const attendanceService = {
     }
   },
 
+  // Get public session info with start time enforcement
+  async getPublicSessionInfo(qrToken) {
+    try {
+      const response = await api.get(`/attendance/session-info/${qrToken}`)
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  },
+
   // Validate student data before face verification
   async validateStudentData(validationData) {
     try {

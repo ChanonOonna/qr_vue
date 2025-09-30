@@ -50,6 +50,11 @@ router.get('/sessions/token/:token', async (req, res) => {
     // Check if session is still active
     const now = new Date();
     const expireTime = new Date(session.expire_time);
+    // Add: block before start_time
+    const startTime = new Date(session.start_time);
+    if (now < startTime) {
+      return res.status(400).json({ error: 'ยังไม่ถึงเวลาเริ่มเช็คชื่อ' });  //QR session has expired
+    }
     
     if (now > expireTime) {
       return res.status(400).json({ error: 'QR session has expired' });
