@@ -207,7 +207,7 @@
               กรุณาทำตามคำแนะนำเพื่อยืนยันตัวตน:
             </p>
             
-            <!-- เพิ่มการแจ้งเตือนไม่พบใบหน้า -->
+            <!-- Error: not found face / positioning -->
             <p v-if="noFaceDetected" class="instruction error">
               {{ noFaceMessage }}
             </p>
@@ -224,6 +224,11 @@
             <p v-if="livenessChecks.blink && livenessChecks.smile && livenessChecks.headMovement" class="instruction success">
                ยืนยันตัวตนสำเร็จ! กรุณากดปุ่ม "ยืนยันใบหน้า"
             </p>
+
+            <!-- Error: backend face mismatch -->
+            <div v-if="modalError" class="modal-error">
+              {{ modalError }}
+            </div>
           </div>
         </div>
 
@@ -276,6 +281,7 @@ export default {
     const resultClass = ref('')
     const showFaceVerificationModal = ref(false)
     const faceVerificationComplete = ref(false)
+    const modalError = ref('')
     
     // Face detection state
     const isFaceDetected = ref(false)
@@ -427,10 +433,9 @@ export default {
         const qrToken = qrData.trim()
         console.log('QR Token scanned:', qrToken)
         
-        // Get session info using QR token (enforce start time at backend)
-        const info = await attendanceService.getPublicSessionInfo(qrToken)
-        sessionInfo.value = { ...info, qr_token: qrToken }
-        manualToken.value = qrToken
+        // Get session info using QR token
+        const response = await attendanceService.getPublicSessionInfo(qrToken)
+        sessionInfo.value = { ...response, qr_token: qrToken }
         
         resultMessage.value = 'พบ QR Code แล้ว กรุณากรอกข้อมูลนักเรียน'
         resultClass.value = 'result-success'
@@ -461,6 +466,7 @@ export default {
         loading.value = true
         resultMessage.value = 'กำลังเริ่มการยืนยันใบหน้า...'
         resultClass.value = 'result-info'
+        modalError.value = ''
         
         // Load face-api.js models if not loaded
         if (typeof faceapi === 'undefined') {
@@ -495,6 +501,7 @@ export default {
       // Reset face detection alerts
       noFaceDetected.value = false
       noFaceMessage.value = ''
+      modalError.value = ''
       
       // Reset liveness checks
       Object.assign(livenessChecks, {
@@ -653,22 +660,10 @@ export default {
         height: box.height * scaleY
       }
       
-      // ปรับพิกัด x สำหรับการสะท้อนภาพ (mirroring)
-      const mirroredX = faceOverlay.value.width - (scaledBox.x + scaledBox.width)
-      
       ctx.strokeStyle = '#4285f4'
       ctx.lineWidth = 3
-      ctx.strokeRect(mirroredX, scaledBox.y, scaledBox.width, scaledBox.height)
-      
-      // Draw landmarks
-      // if (detection.landmarks) {
-      //   ctx.fillStyle = '#ff6b6b'
-      //   detection.landmarks.positions.forEach(point => {
-      //     ctx.beginPath()
-      //     ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI)
-      //     ctx.fill()
-      //   })
-      // }
+      const adjustedY = Math.max(0, scaledBox.y - scaledBox.height * 0.25)
+      ctx.strokeRect(scaledBox.x, adjustedY, scaledBox.width, scaledBox.height)
     }
 
     const clearFaceFrame = () => {
@@ -799,7 +794,7 @@ export default {
           Math.pow(lastPos.y - firstPos.y, 2)
         )
         
-        if (movement > 15 && Date.now() - lastHeadMovementTime.value > 1000) {
+        if (movement > 30 && Date.now() - lastHeadMovementTime.value > 1000) {
           headMovementCount.value++
           lastHeadMovementTime.value = Date.now()
           console.log('Head movement detected!', headMovementCount.value)
@@ -911,6 +906,7 @@ export default {
       try {
         loading.value = true
         resultMessage.value = ''
+        modalError.value = ''
         
         // Get face descriptor from current detection
         let faceDescriptor = null
@@ -930,23 +926,20 @@ export default {
             }
           } catch (error) {
             console.error('Failed to get face descriptor:', error)
-            resultMessage.value = 'ไม่สามารถดึงข้อมูลใบหน้าได้ กรุณาลองใหม่'
-            resultClass.value = 'result-error'
+            modalError.value = 'ไม่สามารถดึงข้อมูลใบหน้าได้ กรุณาลองใหม่'
             loading.value = false
             return
           }
         }
         
         if (!faceDescriptor) {
-          resultMessage.value = 'ไม่พบใบหน้า กรุณาตำแหน่งใบหน้าให้อยู่ในกรอบ'
-          resultClass.value = 'result-error'
+          modalError.value = 'ไม่พบใบหน้า กรุณาตำแหน่งใบหน้าให้อยู่ในกรอบ'
           loading.value = false
           return
         }
         
         // Get client IP address
         const clientIP = await getClientIP()
-        console.log('Client IP obtained:', clientIP)
         
         // Submit check-in data
         const checkInData = {
@@ -957,12 +950,6 @@ export default {
           face_descriptor: faceDescriptor,
           ip_address: clientIP
         }
-        
-        console.log('Sending check-in data:', {
-          ...checkInData,
-          face_descriptor: faceDescriptor.substring(0, 50) + '...',
-          ip_address: checkInData.ip_address
-        })
         
         const result = await attendanceService.checkIn(checkInData)
         
@@ -996,7 +983,10 @@ export default {
       } catch (error) {
         console.error('Failed to submit student info:', error)
         console.error('Error response:', error.response?.data)
-        resultMessage.value = error.response?.data?.error || error.message || 'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล'
+        
+        // Close modal and show error message on main page
+        closeFaceVerificationModal()
+        resultMessage.value = error.response?.data?.error || 'เกิดข้อผิดพลาดในการตรวจสอบใบหน้า กรุณาลองใหม่'
         resultClass.value = 'result-error'
       } finally {
         loading.value = false
@@ -1060,6 +1050,7 @@ export default {
       livenessChecks,
       noFaceDetected,
       noFaceMessage,
+      modalError,
       
       // Computed
       isFormValid,
@@ -1718,5 +1709,14 @@ video {
     padding: 10px 20px;
     font-size: 0.9rem;
   }
+}
+.modal-error {
+  background: #fdecea;
+  color: #d93025;
+  border: 2px solid #d93025;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: center;
+  margin-top: 12px;
 }
 </style> 
