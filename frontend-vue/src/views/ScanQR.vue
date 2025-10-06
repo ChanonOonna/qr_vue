@@ -24,6 +24,15 @@
             </div>
           </div>
 
+          <!-- Camera Selector -->
+          <div class="input-group" v-if="availableCameras.length > 0">
+            <select v-model="selectedCameraId" @change="handleCameraChange" :disabled="loading">
+              <option v-for="cam in availableCameras" :key="cam.deviceId" :value="cam.deviceId">
+                {{ cam.label }}
+              </option>
+            </select>
+          </div>
+
           <!-- Scan Controls -->
           <div class="scan-controls">
             <button 
@@ -282,6 +291,8 @@ export default {
     const showFaceVerificationModal = ref(false)
     const faceVerificationComplete = ref(false)
     const modalError = ref('')
+    const availableCameras = ref([])
+    const selectedCameraId = ref(null)
     
     // Face detection state
     const isFaceDetected = ref(false)
@@ -345,13 +356,21 @@ export default {
         }
         
         // Request camera access
-        qrStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        })
+        qrStream = await startCameraStream(selectedCameraId.value)
         
         if (video.value) {
           video.value.srcObject = qrStream
         }
+
+        // populate camera list after permission to get labels
+        await loadCameras()
+        try {
+          const track = qrStream.getVideoTracks()[0]
+          const settings = track.getSettings ? track.getSettings() : {}
+          if (settings && settings.deviceId && !selectedCameraId.value) {
+            selectedCameraId.value = settings.deviceId
+          }
+        } catch (e) {}
         
         // Start scanning
         scanInterval = setInterval(scanQRCode, 1000)
@@ -361,6 +380,48 @@ export default {
         resultMessage.value = 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการเข้าถึงกล้อง'
         resultClass.value = 'result-error'
         isScanning.value = false
+      }
+    }
+
+    const startCameraStream = async (deviceId) => {
+      const constraints = deviceId
+        ? { video: { deviceId: { exact: deviceId } } }
+        : { video: { facingMode: 'environment' } }
+      return await navigator.mediaDevices.getUserMedia(constraints)
+    }
+
+    const loadCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const cams = devices.filter(d => d.kind === 'videoinput').map((d, idx) => ({
+          deviceId: d.deviceId,
+          label: d.label || `กล้อง ${idx + 1}`
+        }))
+        availableCameras.value = cams
+        if (!selectedCameraId.value && cams.length > 0) {
+          selectedCameraId.value = cams[0].deviceId
+        }
+      } catch (e) {
+        console.warn('enumerateDevices failed', e)
+      }
+    }
+
+    const handleCameraChange = async () => {
+      try {
+        if (!selectedCameraId.value) return
+        if (qrStream) {
+          qrStream.getTracks().forEach(t => t.stop())
+          qrStream = null
+        }
+        const newStream = await startCameraStream(selectedCameraId.value)
+        qrStream = newStream
+        if (video.value) {
+          video.value.srcObject = newStream
+        }
+      } catch (e) {
+        console.error('Failed to switch camera:', e)
+        resultMessage.value = 'สลับกล้องไม่สำเร็จ'
+        resultClass.value = 'result-error'
       }
     }
 
@@ -983,10 +1044,9 @@ export default {
       } catch (error) {
         console.error('Failed to submit student info:', error)
         console.error('Error response:', error.response?.data)
-        
-        // Close modal and show error message on main page
+        // Close modal and show error on main page
         closeFaceVerificationModal()
-        resultMessage.value = error.response?.data?.error || 'เกิดข้อผิดพลาดในการตรวจสอบใบหน้า กรุณาลองใหม่'
+        resultMessage.value = error.response?.data?.error || 'ใบหน้าที่สแกนไม่ตรงกับข้อมูลที่ลงทะเบียนไว้ กรุณาลองใหม่'
         resultClass.value = 'result-error'
       } finally {
         loading.value = false
@@ -1009,6 +1069,11 @@ export default {
           document.head.appendChild(script)
         })
       }
+      // Try to list cameras (labels may require permission)
+      await loadCameras()
+      if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', loadCameras)
+      }
       
       // Watch for liveness checks completion
       // ลบบรรทัดนี้
@@ -1026,6 +1091,9 @@ export default {
     onUnmounted(() => {
       stopScanning()
       closeFaceVerificationModal()
+      if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
+        navigator.mediaDevices.removeEventListener('devicechange', loadCameras)
+      }
     })
 
     return {
@@ -1051,6 +1119,8 @@ export default {
       noFaceDetected,
       noFaceMessage,
       modalError,
+      availableCameras,
+      selectedCameraId,
       
       // Computed
       isFormValid,
@@ -1068,6 +1138,7 @@ export default {
       submitWithFaceVerification,
       formatDateTime,
       goBack,
+      handleCameraChange,
       blinkCount,
       smileCount,
       headMovementCount,
