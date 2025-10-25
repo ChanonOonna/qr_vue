@@ -28,8 +28,8 @@ const userRoutes = require('./routes/users');
 
 const app = express();
 
-// Trust proxy for accurate IP addresses
-app.set('trust proxy', true);
+// Trust proxy for accurate IP addresses (เฉพาะใน production)
+// app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet());
