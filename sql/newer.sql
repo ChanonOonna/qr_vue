@@ -31,7 +31,8 @@ CREATE TABLE `students` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `student_code` (`student_code`)
+  UNIQUE KEY `student_code` (`student_code`),
+  KEY `idx_classgroup_name` (`class_group`, `firstname`, `lastname`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ตาราง qr_sessions
@@ -56,6 +57,11 @@ CREATE TABLE `qr_sessions` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `qr_token` (`qr_token`),
   KEY `teacher_id` (`teacher_id`),
+  KEY `idx_teacher_created` (`teacher_id`, `created_at`),
+  KEY `idx_teacher_starttime` (`teacher_id`, `start_time`),
+  KEY `idx_teachercode_subject` (`teacher_code`, `subject_code`, `subject_name`, `class_group`),
+  KEY `idx_year_semester` (`year`, `semester`),
+  KEY `idx_active_token` (`is_active`, `qr_token`),
   CONSTRAINT `qr_sessions_ibfk_1` FOREIGN KEY (`teacher_id`) REFERENCES `teachers` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=101 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -75,6 +81,7 @@ CREATE TABLE `student_attendance` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `unique_student_session` (`qr_session_id`,`student_id`),
   KEY `student_id` (`student_id`),
+  KEY `idx_session_checkin` (`qr_session_id`, `checkin_time`),
   CONSTRAINT `student_attendance_ibfk_1` FOREIGN KEY (`qr_session_id`) REFERENCES `qr_sessions` (`id`) ON DELETE CASCADE,
   CONSTRAINT `student_attendance_ibfk_2` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=68 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
