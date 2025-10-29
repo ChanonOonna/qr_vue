@@ -10,6 +10,9 @@
         <h2>เข้าสู่ระบบสำหรับครู</h2>
         <p class="subtitle">กรุณาเข้าสู่ระบบด้วยบัญชี Google ของมหาวิทยาลัยเกษตรศาสตร์</p>
         
+       
+        
+        
         <button 
           @click="handleLogin" 
           :disabled="authStore.loading"
@@ -18,6 +21,11 @@
           <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" class="google-icon">
           เข้าสู่ระบบด้วย Google (@ku.th)
         </button>
+
+
+        <div v-if="loginWarning" class="error-message" style="margin-top:10px;">
+          {{ loginWarning }}
+        </div>
         
         <!-- Student Section -->
         <div class="student-section">
@@ -57,15 +65,19 @@
 <script>
 import { useAuthStore } from '../stores/auth'
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import faceModelsService from '../services/faceModels'
+import { getAllowedDomains } from '../services/api'
 
 export default {
   name: 'Login',
   setup() {
     const authStore = useAuthStore()
     const router = useRouter()
+    const route = useRoute()
     const modelsLoading = ref(false)
+    const loginWarning = ref('')
+    const allowedDomains = ref([])
 
     const handleLogin = async () => {
       try {
@@ -98,6 +110,20 @@ export default {
     }
 
     onMounted(async () => {
+      // Load allowed domains from backend
+      try {
+        allowedDomains.value = await getAllowedDomains()
+      } catch (error) {
+        console.error('Failed to load allowed domains:', error)
+        allowedDomains.value = ['@ku.th'] // fallback
+      }
+
+      // Show warning if redirected due to non-allowed email domain
+      const err = route.query.login_error
+      if (err === 'domain_not_allowed') {
+        const domainsText = allowedDomains.value.join(', ')
+        loginWarning.value = `อีเมลของคุณไม่อยู่ในรายการที่อนุญาต กรุณาใช้อีเมลจาก: ${domainsText}`
+      }
       // Don't check auth on login page - let user click login button
       // Auth check is handled by router guards
     })
@@ -105,6 +131,8 @@ export default {
     return {
       authStore,
       modelsLoading,
+      loginWarning,
+      allowedDomains,
       handleLogin,
       goToScanQR
     }
@@ -182,5 +210,24 @@ export default {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* Enhanced error message styling */
+.error-message {
+  /* display: flex; */
+  align-items: center;
+  gap: 10px;
+  background: #fdecea; /* soft red */
+  color: #b71c1c;
+  border: 1px solid #f5c6cb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(183, 28, 28, 0.08);
+}
+
+.error-message::before {
+  content: '⚠️';
+  flex-shrink: 0;
 }
 </style> 

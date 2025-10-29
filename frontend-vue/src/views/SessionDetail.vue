@@ -243,7 +243,9 @@ export default {
     })
     
     const scanUrl = computed(() => {
-      return `${window.location.origin}/scan`
+      const base = import.meta.env.VITE_BASE_URL || window.location.origin
+      const normalizedBase = (base || '').replace(/\/$/, '')
+      return `${normalizedBase}/scan`
     })
     
     const presentCount = computed(() => {
@@ -271,8 +273,10 @@ export default {
     
     const refreshAttendance = async () => {
       try {
-        await qrStore.refreshAttendance(sessionId)
+        // โหลดเฉพาะ attendance data ของ session นี้ ไม่ต้องโหลดทั้งหน้า
+        await qrStore.loadSessionDetail(sessionId)
         attendance.value = qrStore.attendance
+        
         showNotification('อัปเดตข้อมูลการเช็คชื่อแล้ว', 'success')
       } catch (error) {
         console.error('Failed to refresh attendance:', error)
@@ -366,10 +370,6 @@ export default {
 </script>
 
 <style scoped>
-.main_background {
-  
-}
-
 .session-detail-content {
   padding: 0;
   margin: 0;
@@ -678,8 +678,8 @@ export default {
 
 .qr-modal-close {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: -16px; /* move outside the image area */
+  right: -16px; /* move outside the image area */
   font-size: 2rem;
   background: #fff;
   border: none;
@@ -885,8 +885,11 @@ th {
   padding: 40px;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Responsive Design */
+/* Desktop/Laptop (≥768px) - Default styles already defined above */
+
+/* Tablet (376px - 768px) */
+@media (max-width: 768px) and (min-width: 376px) {
   .dashboard-header {
     padding: 15px 20px;
     flex-direction: column;
@@ -929,6 +932,167 @@ th {
   th, td {
     padding: 10px;
     font-size: 0.9rem;
+  }
+}
+
+/* iPhone 11 และมือถือเล็ก (≤375px) */
+@media (max-width: 375px) {
+  .dashboard-header {
+    padding: 10px 15px;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .dashboard-title {
+    font-size: 1.3rem;
+  }
+  
+  .session-detail-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 10px;
+    padding: 15px;
+  }
+  
+  .session-detail-title {
+    font-size: 1.2rem;
+  }
+  
+  .session-detail-subtitle {
+    font-size: 0.9rem;
+  }
+  
+  .session-info-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .info-item {
+    padding: 12px;
+  }
+  
+  .info-label {
+    font-size: 0.9rem;
+  }
+  
+  .info-value {
+    font-size: 0.9rem;
+  }
+  
+  .qr-display {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .qr-code-container {
+    padding: 15px;
+  }
+  
+  .qr-code-title {
+    font-size: 1rem;
+  }
+  
+  .qr-code {
+    width: 150px;
+    height: 150px;
+  }
+  
+  .qr-token {
+    font-size: 0.8rem;
+    padding: 8px;
+  }
+  
+  .stats-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .stat-card {
+    padding: 12px;
+  }
+  
+  .stat-number {
+    font-size: 1.5rem;
+  }
+  
+  .stat-label {
+    font-size: 0.8rem;
+  }
+  
+  .table-header {
+    flex-direction: column;
+    gap: 10px;
+    padding: 15px;
+  }
+  
+  .table-title {
+    font-size: 1.1rem;
+  }
+  
+  .table-actions {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  .table-actions .btn {
+    width: 100%;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+  
+  .table-content {
+    max-height: 300px;
+  }
+  
+  th, td {
+    padding: 8px 6px;
+    font-size: 0.8rem;
+  }
+  
+  .student-code {
+    font-size: 0.8rem;
+  }
+  
+  .student-name {
+    font-size: 0.8rem;
+  }
+  
+  .score-input, .notes-input {
+    padding: 8px;
+    font-size: 0.8rem;
+  }
+  
+  .score-input {
+    width: 60px;
+  }
+  
+  .btn-save-attendance {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+  
+  .status-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+  }
+  
+  .loading, .error, .empty-message {
+    padding: 20px 15px;
+  }
+  
+  .loading p, .error p, .empty-message {
+    font-size: 0.9rem;
+  }
+}
+
+/* Make the close button fixed on small screens to avoid overlaying the QR image */
+@media (max-width: 768px) {
+  .qr-modal-close {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 10000;
   }
 }
 </style> 

@@ -38,10 +38,14 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting - exclude auth routes
 const limiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOW_MS, // 15 minutes default
-  max: RATE_LIMIT_MAX_REQUESTS // 500 requests per windowMs default
+  max: RATE_LIMIT_MAX_REQUESTS, // 500 requests per windowMs default
+  skip: (req) => {
+    // Skip rate limiting for auth routes
+    return req.path === '/login' || req.path === '/callback' || req.path === '/logout';
+  }
 });
 app.use(limiter);
 
@@ -68,25 +72,55 @@ app.use(passport.session());
 // API-only server - Vue.js frontend runs separately on port 3001
 // Backend serves only API endpoints, no static files
 
+// Get allowed domains endpoint (for frontend display)
+app.get('/api/allowed-domains', (req, res) => {
+  try {
+    const domains = process.env.ALLOWED_DOMAINS;
+    if (!domains) {
+      return res.json({ domains: ['@ku.th'] }); // fallback
+    }
+    
+    const domainList = domains.split(',').map(domain => domain.trim());
+    res.json({ domains: domainList });
+  } catch (error) {
+    console.error('Error getting allowed domains:', error);
+    res.json({ domains: ['@ku.th'] }); // fallback
+  }
+});
+
 // Auth routes
+// Force going through Auth0 and show Google account chooser every time
+// - prompt: 'select_account' → บังคับให้ผู้ใช้เลือกบัญชี Google ทุกครั้ง
+// - max_age: 0 → ไม่ใช้ session เดิม บังคับให้ re-auth
+// - connection: 'google-oauth2' → ไปที่ Google โดยตรง (ยังผ่าน Auth0)
 app.get('/login', passport.authenticate('auth0', {
-  scope: 'openid email profile'
+  scope: 'openid email profile',
+  prompt: 'select_account',
+  maxAge: 0,
+  connection: 'google-oauth2'
 }));
 
-app.get('/callback', 
-  passport.authenticate('auth0', { 
-    failureRedirect: `${FRONTEND_URL}/`,
-    failureFlash: true 
-  }),
-  (req, res) => {
-    // Check if teacher has teacher_code
-    if (req.user && req.user.teacher_code) {
-      res.redirect(`${FRONTEND_URL}/dashboard`);
-    } else {
-      res.redirect(`${FRONTEND_URL}/teacher-setup`);
+app.get('/callback', (req, res, next) => {
+  passport.authenticate('auth0', (err, user, info) => {
+    if (err) {
+      return next(err);
     }
-  }
-);
+    if (!user) {
+      // กรณีอีเมลไม่อยู่ในรายการที่อนุญาต
+      return res.redirect(`${FRONTEND_URL}/?login_error=domain_not_allowed`);
+    }
+    req.logIn(user, (err) => {
+      if (err) {
+        return next(err);
+      }
+      // Check if teacher has teacher_code
+      if (user && user.teacher_code) {
+        return res.redirect(`${FRONTEND_URL}/dashboard`);
+      }
+      return res.redirect(`${FRONTEND_URL}/teacher-setup`);
+    });
+  })(req, res, next);
+});
 
 app.get('/logout', (req, res) => {
   req.logout((err) => {

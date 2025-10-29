@@ -152,7 +152,9 @@ export const useQRStore = defineStore('qr', {
       this.error = null
       
       try {
+        console.log('QR Store: Starting export for session:', sessionId)
         const blob = await attendanceService.exportAttendance(sessionId)
+        console.log('QR Store: Received blob:', blob)
         
         // Create download link
         const url = window.URL.createObjectURL(blob)
@@ -163,8 +165,9 @@ export const useQRStore = defineStore('qr', {
         link.click()
         document.body.removeChild(link)
         window.URL.revokeObjectURL(url)
+        console.log('QR Store: Download initiated')
       } catch (error) {
-        console.error('Failed to export attendance:', error)
+        console.error('QR Store: Failed to export attendance:', error)
         this.error = error.message || 'Failed to export attendance'
         throw error
       } finally {

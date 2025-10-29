@@ -97,6 +97,27 @@ class QRCodeSession {
     }
   }
 
+  static async getSubjectsByTeacher(teacherCode) {
+    const query = `
+      SELECT DISTINCT 
+        subject_code,
+        subject_name,
+        class_group,
+        year,
+        semester
+      FROM qr_sessions 
+      WHERE teacher_code = ?
+      ORDER BY subject_code, subject_name, class_group
+    `;
+
+    try {
+      const [rows] = await pool.execute(query, [teacherCode]);
+      return rows;
+    } catch (error) {
+      throw new Error(`Failed to get subjects by teacher: ${error.message}`);
+    }
+  }
+
   static async deactivate(sessionId) {
     const query = `
       UPDATE qr_sessions SET is_active = FALSE WHERE id = ?

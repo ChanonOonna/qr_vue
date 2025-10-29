@@ -9,6 +9,8 @@ import ScanQR from '../views/ScanQR.vue'
 import FaceRegistration from '../views/FaceRegistration.vue'
 import TeacherSetup from '../views/TeacherSetup.vue'
 import SessionDetail from '../views/SessionDetail.vue'
+import AttendanceSummary from '../views/AttendanceSummary.vue'
+import BulkCreateQR from '../views/BulkCreateQR.vue'
 
 const routes = [
   {
@@ -51,6 +53,18 @@ const routes = [
     path: '/dashboard/session/:sessionId',
     name: 'SessionDetail',
     component: SessionDetail,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/attendance-summary',
+    name: 'AttendanceSummary',
+    component: AttendanceSummary,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/bulk-create-qr',
+    name: 'BulkCreateQR',
+    component: BulkCreateQR,
     meta: { requiresAuth: true }
   }
 ]

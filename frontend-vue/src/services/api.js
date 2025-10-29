@@ -10,7 +10,14 @@ const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Add any request headers here if needed
+    // Debug: Log request details
+    console.log('API Request:', {
+      url: config.url,
+      method: config.method,
+      withCredentials: config.withCredentials,
+      cookies: document.cookie,
+      headers: config.headers
+    })
     return config
   },
   (error) => {
@@ -34,5 +41,16 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+// API functions
+export const getAllowedDomains = async () => {
+  try {
+    const response = await api.get('/allowed-domains')
+    return response.data.domains
+  } catch (error) {
+    console.error('Error fetching allowed domains:', error)
+    return ['@ku.th'] // fallback
+  }
+}
 
 export default api 

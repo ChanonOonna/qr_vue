@@ -11,8 +11,13 @@ const dbConfig = {
   database: process.env.DB_NAME,
   port: parseInt(process.env.DB_PORT),
   waitForConnections: true,
-  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT),
-  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT)
+  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 40,
+  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT) || 0,
+  acquireTimeout: 60000,
+  timeout: 60000,
+  reconnect: true,
+  idleTimeout: 300000,
+  maxReconnects: 3,
 };
 
 // Create connection pool

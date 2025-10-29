@@ -263,12 +263,29 @@ export default {
       }
       
       try {
+        // Convert datetime-local values to proper format for backend
+        const startTime = new Date(form.start_time)
+        const expireTime = new Date(form.expire_time)
+        
+        // Debug: Log the time conversion
+        console.log('CreateQR time conversion:', {
+          startTimeInput: form.start_time,
+          expireTimeInput: form.expire_time,
+          startTimeISO: startTime.toISOString(),
+          expireTimeISO: expireTime.toISOString(),
+          startTimeLocal: startTime.toLocaleString('th-TH'),
+          expireTimeLocal: expireTime.toLocaleString('th-TH'),
+          timezoneOffset: startTime.getTimezoneOffset()
+        })
+        
         const sessionData = {
           ...form,
           year: parseInt(form.year),
           semester: parseInt(form.semester),
           late_minute: parseInt(form.late_minute),
-          teacher_code: authStore.userInfo?.teacher_code
+          teacher_code: authStore.userInfo?.teacher_code,
+          start_time: form.start_time, // ใช้ string โดยตรง ไม่แปลงเป็น Date
+          expire_time: form.expire_time // ใช้ string โดยตรง ไม่แปลงเป็น Date
         }
         
         const newSession = await qrStore.createQRSession(sessionData)
@@ -285,9 +302,8 @@ export default {
     }
 
     onMounted(() => {
-      // Set default start time to current time + 5 minutes (Thailand timezone)
+      // Set default start time to current time (Thailand timezone)
       const now = new Date()
-      now.setMinutes(now.getMinutes() )
       
       // Convert to Thailand timezone (UTC+7)
       const thailandTime = new Date(now.getTime() + (7 * 60 * 60 * 1000))
@@ -538,6 +554,189 @@ export default {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Responsive Design */
+/* Desktop/Laptop (≥768px) - Default styles already defined above */
+
+/* Tablet (376px - 768px) */
+@media (max-width: 768px) and (min-width: 376px) {
+  .create-qr-content {
+    padding: 20px;
+    max-width: 100%;
+  }
+  
+  .create-qr-card {
+    border-radius: 15px;
+  }
+  
+  .create-qr-header {
+    padding: 30px 25px;
+  }
+  
+  .create-qr-title {
+    font-size: 1.7rem;
+  }
+  
+  .create-qr-form {
+    padding: 30px 25px;
+  }
+  
+  .teacher-info {
+    padding: 15px;
+    margin-bottom: 25px;
+  }
+  
+  .teacher-email, .teacher-code {
+    font-size: 0.95rem;
+  }
+  
+  .form-group {
+    margin-bottom: 20px;
+  }
+  
+  .form-group label {
+    font-size: 0.9rem;
+  }
+  
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 12px;
+    font-size: 0.95rem;
+  }
+  
+  .session-duration-info {
+    padding: 12px;
+    margin-bottom: 20px;
+  }
+  
+  .duration-label {
+    font-size: 0.85rem;
+  }
+  
+  .duration-value {
+    font-size: 0.95rem;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .btn-cancel, .btn-create {
+    padding: 12px 20px;
+    font-size: 0.95rem;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* iPhone 11 และมือถือเล็ก (≤375px) */
+@media (max-width: 375px) {
+  .create-qr-content {
+    padding: 10px;
+    max-width: 100%;
+  }
+  
+  .create-qr-card {
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  }
+  
+  .create-qr-header {
+    padding: 25px 20px;
+  }
+  
+  .create-qr-title {
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+  }
+  
+  .create-qr-form {
+    padding: 25px 20px;
+  }
+  
+  .teacher-info {
+    padding: 12px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+  }
+  
+  .teacher-email, .teacher-code {
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+  }
+  
+  .form-group {
+    margin-bottom: 18px;
+  }
+  
+  .form-group label {
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+  }
+  
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 10px 12px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+  }
+  
+  .session-duration-info {
+    padding: 10px;
+    margin-bottom: 18px;
+    border-radius: 8px;
+  }
+  
+  .duration-item {
+    margin-bottom: 6px;
+  }
+  
+  .duration-label {
+    font-size: 0.8rem;
+  }
+  
+  .duration-value {
+    font-size: 0.9rem;
+  }
+  
+  .duration-warning {
+    font-size: 0.8rem;
+    padding: 6px 10px;
+    margin-top: 6px;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 15px;
+  }
+  
+  .btn-cancel, .btn-create {
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    width: 100%;
+    justify-content: center;
+    border-radius: 8px;
+  }
+  
+  .error-message {
+    font-size: 0.85rem;
+    margin-top: 12px;
+  }
+  
+  .loading {
+    margin-top: 15px;
+  }
+  
+  .spinner {
+    width: 25px;
+    height: 25px;
+    border-width: 2px;
+  }
+  
+  .loading p {
+    font-size: 0.85rem;
   }
 }
 </style> 

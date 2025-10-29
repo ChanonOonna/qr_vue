@@ -5,6 +5,21 @@ const passport = require('passport');
 const Auth0Strategy = require('passport-auth0');
 const { pool } = require('./db');
 
+// Get allowed domains from environment variable
+const getAllowedDomains = () => {
+  const domains = process.env.ALLOWED_DOMAINS;
+  if (!domains) {
+    return ['@ku.th']; // fallback
+  }
+  return domains.split(',').map(domain => domain.trim());
+};
+
+// Check if email is allowed
+const isEmailAllowed = (email) => {
+  const allowedDomains = getAllowedDomains();
+  return allowedDomains.some(domain => email.endsWith(domain));
+};
+
 // Auth0 Strategy configuration
 const strategy = new Auth0Strategy(
   {
@@ -16,10 +31,13 @@ const strategy = new Auth0Strategy(
   },
   async (accessToken, refreshToken, extraParams, profile, done) => {
     try {
-      // Check if email ends with @ku.th
+      // Check if email is in allowed domains
       const email = profile.emails[0].value;
-      if (!email.endsWith('@ku.th')) {
-        return done(null, false, { message: 'Only @ku.th emails are allowed' });
+      if (!isEmailAllowed(email)) {
+        const allowedDomains = getAllowedDomains();
+        return done(null, false, { 
+          message: `Only emails from these domains are allowed: ${allowedDomains.join(', ')}` 
+        });
       }
 
       // Check if teacher exists in database (by auth0_id)

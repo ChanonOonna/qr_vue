@@ -31,6 +31,16 @@ export const qrcodeService = {
     }
   },
 
+  // Get QR session subjects for filter dropdowns
+  async getQRSessionSubjects() {
+    try {
+      const response = await api.get('/qrcode/sessions/subjects')
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  },
+
   // Delete QR session
   async deleteQRSession(sessionId) {
     try {

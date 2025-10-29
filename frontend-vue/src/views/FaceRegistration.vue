@@ -62,7 +62,15 @@
         <!-- Camera Section -->
         <div class="camera-section">
           <h3>ตรวจจับใบหน้า</h3>
-          <div class="camera-container" ref="cameraContainer">
+          
+          <!-- Models Loading Status -->
+          <div v-if="modelsLoading" class="models-loading">
+            <div class="loading-spinner"></div>
+            <p>กำลังโหลดโมเดลใบหน้า...</p>
+            <small>กรุณารอสักครู่ โมเดลจะโหลดอัตโนมัติเมื่อเปิดหน้า</small>
+          </div>
+          
+          <div v-else class="camera-container" ref="cameraContainer">
             <video ref="video" autoplay playsinline></video>
             <canvas ref="canvas" style="display: none;"></canvas>
             <canvas ref="overlay" class="face-overlay"></canvas>
@@ -74,10 +82,11 @@
           <div class="camera-controls">
             <button 
               @click="startCamera" 
-              :disabled="!isFormValid || isCameraActive || loading"
+              :disabled="!isFormValid || isCameraActive || loading || modelsLoading"
               class="btn btn-primary"
             >
-              📷 เปิดกล้อง
+              <span v-if="modelsLoading">⏳ โมเดลกำลังโหลด...</span>
+              <span v-else>📷 เปิดกล้อง</span>
             </button>
             <button 
               @click="registerFace" 
@@ -141,6 +150,7 @@ export default {
     const loading = ref(false)
     const resultMessage = ref('')
     const resultClass = ref('')
+    const modelsLoading = ref(true)
     
     let stream = null
     let faceDetectionInterval = null
@@ -193,12 +203,6 @@ export default {
         
         // ถ้า validation สำเร็จ แสดงว่านักเรียนไม่มีปัญหา สามารถลงทะเบียนได้
         console.log('Student validation successful:', validationResult)
-        
-        // Load face models if not already loaded
-        if (!faceModelsService.isModelsLoaded()) {
-          resultMessage.value = 'กำลังโหลดโมเดลใบหน้า...'
-          await faceModelsService.loadModels()
-        }
         
         // If we get here, student doesn't exist (backend returns error if exists)
         
@@ -269,7 +273,7 @@ export default {
       overlay.value.height = video.value.videoHeight || 480
       
       let lastDetectionTime = 0
-      const detectionInterval = 300 // เพิ่มเป็น 300ms เพื่อลดการประมวลผล
+      const detectionInterval = 500 // เพิ่มเป็น 500ms เพื่อลดการประมวลผล
       let detectionCount = 0
       
       faceDetectionInterval = setInterval(async () => {
@@ -282,7 +286,7 @@ export default {
         detectionCount++
         
         try {
-          // ใช้ TinyFaceDetectorOptions ที่เร็วขึ้น
+          // ใช้ TinyFaceDetectorOptions ที่เร็วขึ้นและลดการประมวลผล
           const detection = await faceapi.detectSingleFace(
             video.value, 
             new faceapi.TinyFaceDetectorOptions({
@@ -387,10 +391,9 @@ export default {
         canvas.value.height = video.value.videoHeight
         context.drawImage(video.value, 0, 0, canvas.value.width, canvas.value.height)
         
-        // ใช้ข้อมูลจาก face detection ที่มีอยู่แล้ว
-        console.log('Using existing face detection for registration...')
+        resultMessage.value = 'กำลังประมวลผลใบหน้า...'
         
-        // ใช้ TinyFaceDetectorOptions ที่เร็วขึ้นสำหรับการลงทะเบียน
+        // ใช้การตรวจจับใบหน้าที่เร็วขึ้นสำหรับการลงทะเบียน
         const detection = await faceapi.detectSingleFace(
           video.value, 
           new faceapi.TinyFaceDetectorOptions({
@@ -420,7 +423,13 @@ export default {
           face_descriptor: JSON.stringify(Array.from(detection.descriptor))
         }
         
-        await attendanceService.registerFace(registrationData)
+        // เพิ่ม timeout สำหรับการลงทะเบียน
+        const registrationPromise = attendanceService.registerFace(registrationData)
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('การลงทะเบียนใช้เวลานานเกินไป กรุณาลองใหม่')), 10000)
+        )
+        
+        await Promise.race([registrationPromise, timeoutPromise])
         
         resultMessage.value = 'ลงทะเบียนใบหน้าสำเร็จ'
         resultClass.value = 'result-success'
@@ -463,42 +472,83 @@ export default {
     }
 
     onMounted(async () => {
-      // Load face-api.js if not already loaded
-      if (typeof faceapi === 'undefined') {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src = '/js/face-api.min.js'
-          script.onload = () => {
-            // Load required models
-            Promise.all([
+      try {
+        modelsLoading.value = true
+        // Load face-api.js if not already loaded
+        if (typeof faceapi === 'undefined') {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script')
+            script.src = '/js/face-api.min.js'
+            script.onload = () => {
+              // Load required models with optimized settings
+              Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+                faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+                faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+              ]).then(() => {
+                console.log('Face API models loaded successfully')
+                modelsLoading.value = false
+                resolve()
+              }).catch(reject)
+            }
+            script.onerror = reject
+            document.head.appendChild(script)
+          })
+        } else {
+          // Models already loaded, just ensure they're available
+          try {
+            await Promise.all([
               faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
               faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
               faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-            ]).then(() => {
-              console.log('Face API models loaded successfully')
-              resolve()
-            }).catch(reject)
+            ])
+            console.log('Face API models loaded successfully')
+            modelsLoading.value = false
+          } catch (error) {
+            console.log('Models already loaded or loading failed:', error)
+            modelsLoading.value = false
           }
-          script.onerror = reject
-          document.head.appendChild(script)
-        })
-      } else {
-        // Models already loaded, just ensure they're available
-        try {
-          await Promise.all([
-            faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-            faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-            faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-          ])
-          console.log('Face API models loaded successfully')
-        } catch (error) {
-          console.log('Models already loaded or loading failed:', error)
         }
+      } catch (error) {
+        console.error('Failed to load face models:', error)
+        modelsLoading.value = false
+        resultMessage.value = 'ไม่สามารถโหลดโมเดลใบหน้าได้ กรุณาโหลดหน้าใหม่'
+        resultClass.value = 'result-error'
       }
     })
 
     onUnmounted(() => {
+      console.log('FaceRegistration: Cleaning up resources...')
+      
+      // Stop camera and face detection
       stopCamera()
+      
+      // Additional cleanup for safety
+      if (faceDetectionInterval) {
+        clearInterval(faceDetectionInterval)
+        faceDetectionInterval = null
+      }
+      
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop())
+        stream = null
+      }
+      
+      if (video.value) {
+        video.value.srcObject = null
+      }
+      
+      if (canvas.value) {
+        const ctx = canvas.value.getContext('2d')
+        ctx.clearRect(0, 0, canvas.value.width, canvas.value.height)
+      }
+      
+      if (overlay.value) {
+        const ctx = overlay.value.getContext('2d')
+        ctx.clearRect(0, 0, overlay.value.width, overlay.value.height)
+      }
+      
+      console.log('FaceRegistration: Cleanup completed')
     })
 
     return {
@@ -511,6 +561,7 @@ export default {
       loading,
       resultMessage,
       resultClass,
+      modelsLoading,
       studentForm,
       isFormValid,
       studentCodeError,
@@ -667,6 +718,39 @@ export default {
   margin-bottom: 20px;
   font-size: 1.3rem;
   font-weight: 600;
+}
+
+.models-loading {
+  text-align: center;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 15px;
+  border: 2px solid #dee2e6;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e9ecef;
+  border-top: 4px solid #4285f4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 15px;
+  box-shadow: 0 2px 10px rgba(66, 133, 244, 0.3);
+}
+
+.models-loading p {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #495057;
+  margin: 0 0 10px 0;
+}
+
+.models-loading small {
+  font-size: 0.9rem;
+  color: #6c757d;
+  font-style: italic;
 }
 
 .camera-container {
@@ -889,7 +973,11 @@ video {
   }
 }
 
-@media (max-width: 768px) {
+/* Responsive Design */
+/* Desktop/Laptop (≥768px) - Default styles already defined above */
+
+/* Tablet (376px - 768px) */
+@media (max-width: 768px) and (min-width: 376px) {
   .form-row {
     grid-template-columns: 1fr;
     gap: 0;
@@ -897,6 +985,7 @@ video {
   
   .camera-controls {
     flex-direction: column;
+    gap: 12px;
   }
   
   .camera-container {
@@ -906,6 +995,139 @@ video {
   .face-frame {
     width: 200px;
     height: 200px;
+  }
+  
+  .face-registration-content {
+    padding: 30px 20px;
+  }
+  
+  .student-form {
+    padding: 15px;
+  }
+  
+  .btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+  }
+}
+
+/* iPhone 11 และมือถือเล็ก (≤375px) */
+@media (max-width: 375px) {
+  .face-registration-container {
+    padding: 10px;
+  }
+  
+  .face-registration-header {
+    padding: 30px 15px;
+  }
+  
+  .header-text h1 {
+    font-size: 1.5rem;
+  }
+  
+  .header-text p {
+    font-size: 1rem;
+  }
+  
+  .btn-back {
+    width: 35px;
+    height: 35px;
+    font-size: 1rem;
+  }
+  
+  .face-registration-content {
+    padding: 20px 15px;
+  }
+  
+  .student-info-section h3 {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+  }
+  
+  .student-form {
+    padding: 15px;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+  }
+  
+  .form-group label {
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+  }
+  
+  .form-group input {
+    padding: 10px 12px;
+    font-size: 0.9rem;
+  }
+  
+  .error-message {
+    font-size: 0.8rem;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  
+  .camera-section h3 {
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+  }
+  
+  .camera-container {
+    height: 250px;
+    margin-bottom: 15px;
+  }
+  
+  .face-frame {
+    width: 180px;
+    height: 180px;
+  }
+  
+  .camera-controls {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .btn {
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .face-status {
+    padding: 12px;
+    font-size: 0.9rem;
+  }
+  
+  .registration-progress {
+    padding: 20px;
+  }
+  
+  .progress-spinner {
+    width: 40px;
+    height: 40px;
+    border-width: 3px;
+  }
+  
+  .registration-progress p {
+    font-size: 1rem;
+  }
+  
+  .result-message {
+    padding: 15px;
+    font-size: 0.9rem;
+  }
+  
+  .loading {
+    padding: 20px 15px;
+  }
+  
+  .loading p {
+    font-size: 0.9rem;
   }
 }
 </style> 

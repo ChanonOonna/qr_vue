@@ -25,6 +25,58 @@ router.get('/session/:sessionId', requireTeacher, async (req, res) => {
   }
 });
 
+// Get bulk attendance data for multiple sessions
+router.post('/bulk', requireTeacher, async (req, res) => {
+  try {
+    const { sessionIds } = req.body;
+    
+    if (!sessionIds || !Array.isArray(sessionIds) || sessionIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'sessionIds array is required'
+      });
+    }
+    
+    console.log(`Getting bulk attendance for ${sessionIds.length} sessions`);
+    
+    // Get attendance data for all sessions at once
+    const bulkAttendance = await Attendance.getBulkBySessionIds(sessionIds, req.user.id);
+    
+    // Format the response to group by session ID
+    const formattedData = {};
+    let totalCount = 0;
+    
+    bulkAttendance.forEach(record => {
+      const sessionId = record.qr_session_id;
+      if (!formattedData[sessionId]) {
+        formattedData[sessionId] = [];
+      }
+      formattedData[sessionId].push(record);
+      totalCount++;
+    });
+    
+    // Ensure all requested session IDs have an entry (even if empty)
+    sessionIds.forEach(sessionId => {
+      if (!formattedData[sessionId]) {
+        formattedData[sessionId] = [];
+      }
+    });
+    
+    res.json({
+      success: true,
+      data: formattedData,
+      count: totalCount,
+      sessions: sessionIds.length
+    });
+  } catch (error) {
+    console.error('Error getting bulk attendance:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to get bulk attendance data' 
+    });
+  }
+});
+
 // Update attendance score and notes
 router.put('/:attendanceId', requireTeacher, async (req, res) => {
   try {
@@ -79,14 +131,68 @@ router.get('/stats', requireTeacher, async (req, res) => {
   }
 });
 
+// Input validation helper functions
+const validateStudentData = (student_id, firstname, lastname) => {
+  const errors = [];
+  
+  // Validate student_id
+  if (!student_id || typeof student_id !== 'string') {
+    errors.push('รหัสนิสิตไม่ถูกต้อง');
+  } else if (student_id.trim().length < 5 || student_id.trim().length > 20) {
+    errors.push('รหัสนิสิตต้องมี 5-20 ตัวอักษร');
+  } else if (!/^[a-zA-Z0-9]+$/.test(student_id.trim())) {
+    errors.push('รหัสนิสิตต้องเป็นตัวอักษรและตัวเลขเท่านั้น');
+  }
+  
+  // Validate firstname
+  if (!firstname || typeof firstname !== 'string') {
+    errors.push('ชื่อไม่ถูกต้อง');
+  } else if (firstname.trim().length < 1 || firstname.trim().length > 50) {
+    errors.push('ชื่อต้องมี 1-50 ตัวอักษร');
+  } else if (!/^[a-zA-Zก-๙\s]+$/.test(firstname.trim())) {
+    errors.push('ชื่อต้องเป็นตัวอักษรเท่านั้น');
+  }
+  
+  // Validate lastname
+  if (!lastname || typeof lastname !== 'string') {
+    errors.push('นามสกุลไม่ถูกต้อง');
+  } else if (lastname.trim().length < 1 || lastname.trim().length > 50) {
+    errors.push('นามสกุลต้องมี 1-50 ตัวอักษร');
+  } else if (!/^[a-zA-Zก-๙\s]+$/.test(lastname.trim())) {
+    errors.push('นามสกุลต้องเป็นตัวอักษรเท่านั้น');
+  }
+  
+  return errors;
+};
+
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return '';
+  return input.trim().replace(/[<>\"'&]/g, '');
+};
+
 // Validate student data before face verification
 router.post('/validate-student', async (req, res) => {
   try {
     const { qr_token, student_id, firstname, lastname } = req.body;
     
+    // Basic required fields check
     if (!qr_token || !student_id || !firstname || !lastname) {
       return res.status(400).json({ error: 'กรุณากรอกข้อมูลนิสิตให้ครบถ้วน' });
     }
+    
+    // Input validation
+    const validationErrors = validateStudentData(student_id, firstname, lastname);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ 
+        error: 'ข้อมูลไม่ถูกต้อง',
+        details: validationErrors
+      });
+    }
+    
+    // Sanitize inputs
+    const sanitizedStudentId = sanitizeInput(student_id);
+    const sanitizedFirstname = sanitizeInput(firstname);
+    const sanitizedLastname = sanitizeInput(lastname);
     
     // Get QR session by token
     const session = await QRCodeSession.getByToken(qr_token);
@@ -105,7 +211,7 @@ router.post('/validate-student', async (req, res) => {
     }
     
     // Check if student already checked in
-    const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, student_id, firstname, lastname);
+    const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, sanitizedStudentId, sanitizedFirstname, sanitizedLastname);
     if (existingAttendance) {
       return res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
     }
@@ -113,8 +219,8 @@ router.post('/validate-student', async (req, res) => {
     // Check if student exists in face registration
     const { pool } = require('../db');
     const [faceRows] = await pool.execute(
-      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ?ScanQR.vue AND last_name = ?',
-      [student_id, firstname, lastname]
+      'SELECT * FROM studentface WHERE student_id = ? AND first_name = ? AND last_name = ?',
+      [sanitizedStudentId, sanitizedFirstname, sanitizedLastname]
     );
     
     if (faceRows.length === 0) {
@@ -125,18 +231,37 @@ router.post('/validate-student', async (req, res) => {
     
     // Validation passed
     res.json({ 
+      valid: true,
       message: 'ข้อมูลนักเรียนถูกต้อง สามารถดำเนินการยืนยันใบหน้าได้',
-      session: session,
+      session: {
+        id: session.id,
+        subject_code: session.subject_code,
+        subject_name: session.subject_name,
+        teacher_code: session.teacher_code,
+        class_group: session.class_group,
+        start_time: session.start_time,
+        late_minute: session.late_minute
+      },
       student: {
-        student_id,
-        firstname,
-        lastname
+        student_id: sanitizedStudentId,
+        firstname: sanitizedFirstname,
+        lastname: sanitizedLastname
       }
     });
     
   } catch (error) {
-    console.error('Error validating student data:', error);
-    res.status(500).json({ error: 'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล' });
+    console.error('Error in validate-student:', error);
+    
+    // Better error handling with specific error types
+    if (error.code === 'ER_BAD_FIELD_ERROR') {
+      res.status(500).json({ error: 'เกิดข้อผิดพลาดในโครงสร้างฐานข้อมูล' });
+    } else if (error.code === 'ECONNREFUSED') {
+      res.status(500).json({ error: 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' });
+    } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+      res.status(500).json({ error: 'ไม่มีสิทธิ์เข้าถึงฐานข้อมูล' });
+    } else {
+      res.status(500).json({ error: 'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล กรุณาลองใหม่' });
+    }
   }
 });
 
@@ -198,8 +323,28 @@ router.post('/checkin', async (req, res) => {
   try {
     const { qr_token, student_id, firstname, lastname, face_descriptor, ip_address } = req.body;
     
+    // Basic required fields check
     if (!qr_token || !student_id || !firstname || !lastname) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+    }
+    
+    // Input validation
+    const validationErrors = validateStudentData(student_id, firstname, lastname);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ 
+        error: 'ข้อมูลไม่ถูกต้อง',
+        details: validationErrors
+      });
+    }
+    
+    // Sanitize inputs
+    const sanitizedStudentId = sanitizeInput(student_id);
+    const sanitizedFirstname = sanitizeInput(firstname);
+    const sanitizedLastname = sanitizeInput(lastname);
+    
+    // Validate face_descriptor if provided
+    if (face_descriptor && typeof face_descriptor !== 'string') {
+      return res.status(400).json({ error: 'ข้อมูลใบหน้าไม่ถูกต้อง' });
     }
     
     // Get client IP address (from frontend or fallback to server IP)
@@ -231,17 +376,17 @@ router.post('/checkin', async (req, res) => {
     }
     
     // Check if student already checked in (by id, firstname, lastname)
-    const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, student_id, firstname, lastname);
+    const existingAttendance = await Attendance.checkExistingAttendanceByFullInfo(session.id, sanitizedStudentId, sanitizedFirstname, sanitizedLastname);
     if (existingAttendance) {
       return res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
     }
     
     // ตรวจสอบกับฐานข้อมูล studentface (แค่เช็คว่ามีข้อมูล)
     const { pool } = require('../db');
-    console.log('DEBUG FACE:', student_id, firstname, lastname);
+    console.log('DEBUG FACE:', sanitizedStudentId, sanitizedFirstname, sanitizedLastname);
     const [faceRows] = await pool.execute(
       'SELECT * FROM studentface WHERE student_id = ? AND first_name = ? AND last_name = ?',
-      [student_id, firstname, lastname]
+      [sanitizedStudentId, sanitizedFirstname, sanitizedLastname]
     );
     if (faceRows.length === 0) {
       return res.status(400).json({ error: 'ไม่พบนักเรียนนี้ในระบบลงทะเบียนใบหน้า กรุณาลงทะเบียนที่หน้า /face-registration' });
@@ -328,14 +473,14 @@ router.post('/checkin', async (req, res) => {
     
     // Create or update student record
     const Student = require('../models/student');
-    let student = await Student.getByCode(student_id);
+    let student = await Student.getByCode(sanitizedStudentId);
     
     if (!student) {
       // Create new student
       const newStudentId = await Student.create({
-        student_code: student_id,
-        firstname,
-        lastname,
+        student_code: sanitizedStudentId,
+        firstname: sanitizedFirstname,
+        lastname: sanitizedLastname,
         class_group: session.class_group
       });
       student = await Student.getById(newStudentId);
@@ -362,7 +507,7 @@ router.post('/checkin', async (req, res) => {
         AND students.student_code = ?
         AND student_submissions.firstname = ?
         AND student_submissions.lastname = ?
-    `, [qr_token, student_id, firstname, lastname]);
+    `, [qr_token, sanitizedStudentId, sanitizedFirstname, sanitizedLastname]);
     if (existingSubRows.length > 0) {
       return res.status(400).json({ error: 'มีการลงทะเบียนแล้ว' });
     }
@@ -372,8 +517,8 @@ router.post('/checkin', async (req, res) => {
       student_id: student.id,
       teacher_id: session.teacher_id,
       qr_session_id: session.id,
-      firstname,
-      lastname,
+      firstname: sanitizedFirstname,
+      lastname: sanitizedLastname,
       ip_address: clientIP, // ใช้ IP ที่ส่งมาจาก frontend
       user_agent: req.headers['user-agent']
     });
@@ -386,7 +531,19 @@ router.post('/checkin', async (req, res) => {
     });
   } catch (error) {
     console.error('Error during check-in:', error);
-    res.status(500).json({ error: 'Failed to process check-in' });
+    
+    // Better error handling with specific error types
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'มีการเช็คชื่อในรอบนี้แล้ว' });
+    } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+      res.status(500).json({ error: 'เกิดข้อผิดพลาดในโครงสร้างฐานข้อมูล' });
+    } else if (error.code === 'ECONNREFUSED') {
+      res.status(500).json({ error: 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' });
+    } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+      res.status(500).json({ error: 'ไม่มีสิทธิ์เข้าถึงฐานข้อมูล' });
+    } else {
+      res.status(500).json({ error: 'เกิดข้อผิดพลาดในการเช็คชื่อ กรุณาลองใหม่' });
+    }
   }
 });
 
@@ -395,25 +552,47 @@ router.post('/student/register', async (req, res) => {
   console.log('Received registration request:', req.body)
   
   const { student_id, first_name, last_name, face_descriptor } = req.body;
+  
+  // Basic required fields check
   if (!student_id || !first_name || !last_name || !face_descriptor) {
     console.log('Missing required fields:', { student_id, first_name, last_name, face_descriptor: !!face_descriptor })
     return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบ' });
+  }
+  
+  // Input validation
+  const validationErrors = validateStudentData(student_id, first_name, last_name);
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'ข้อมูลไม่ถูกต้อง',
+      details: validationErrors
+    });
+  }
+  
+  // Sanitize inputs
+  const sanitizedStudentId = sanitizeInput(student_id);
+  const sanitizedFirstname = sanitizeInput(first_name);
+  const sanitizedLastname = sanitizeInput(last_name);
+  
+  // Validate face_descriptor
+  if (typeof face_descriptor !== 'string' || face_descriptor.length < 100) {
+    return res.status(400).json({ success: false, message: 'ข้อมูลใบหน้าไม่ถูกต้อง' });
   }
   
   try {
     const { pool } = require('../db');
     
     // 1. เช็ค student_id ซ้ำ (เหมือนเดิม)
-    const [rows] = await pool.execute('SELECT * FROM studentface WHERE student_id = ?', [student_id]);
+    const [rows] = await pool.execute('SELECT * FROM studentface WHERE student_id = ?', [sanitizedStudentId]);
     if (rows.length > 0) {
-      console.log('Student already exists:', student_id)
+      console.log('Student already exists:', sanitizedStudentId)
       return res.status(400).json({ success: false, message: 'นักเรียนคนนี้ลงทะเบียนไปแล้ว' });
     }
 
     // 2. เช็คชื่อและนามสกุลซ้ำ
-    const [nameRows] = await pool.execute('SELECT * FROM studentface WHERE first_name = ? AND last_name = ?', [first_name, last_name]);
+    const [nameRows] = await pool.execute('SELECT * FROM studentface WHERE first_name = ? AND last_name = ?', [sanitizedFirstname, sanitizedLastname]);
     if (nameRows.length > 0) {
-      console.log('Name combination already exists:', first_name, last_name)
+      console.log('Name combination already exists:', sanitizedFirstname, sanitizedLastname)
       return res.status(400).json({ success: false, message: 'ชื่อและนามสกุลนี้ถูกใช้ลงทะเบียนไปแล้ว' });
     }
 
@@ -454,13 +633,23 @@ router.post('/student/register', async (req, res) => {
     // 4. ถ้าไม่ซ้ำ ให้ insert
     await pool.execute(
       'INSERT INTO studentface (student_id, first_name, last_name, face_descriptor) VALUES (?, ?, ?, ?)',
-      [student_id, first_name, last_name, face_descriptor]
+      [sanitizedStudentId, sanitizedFirstname, sanitizedLastname, face_descriptor]
     );
-    console.log('Registration successful for student:', student_id)
+    console.log('Registration successful for student:', sanitizedStudentId)
     res.json({ success: true, message: 'ลงทะเบียนสำเร็จ' });
   } catch (error) {
     console.error('Error in /student/register:', error);
-    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการลงทะเบียน' });
+    
+    // Better error handling with specific error types
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ success: false, message: 'ข้อมูลซ้ำ กรุณาตรวจสอบอีกครั้ง' });
+    } else if (error.code === 'ER_BAD_FIELD_ERROR') {
+      res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในโครงสร้างฐานข้อมูล' });
+    } else if (error.code === 'ECONNREFUSED') {
+      res.status(500).json({ success: false, message: 'ไม่สามารถเชื่อมต่อฐานข้อมูลได้' });
+    } else {
+      res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่' });
+    }
   }
 });
 
@@ -498,7 +687,12 @@ router.get('/export/:sessionId', requireTeacher, async (req, res) => {
     XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     const today = new Date().toISOString().split('T')[0];
-    res.setHeader('Content-Disposition', `attachment; filename="attendance_${session.subject_code}_${today}.xlsx"`);
+    
+    // Clean filename to avoid invalid characters in header
+    const cleanSubjectCode = session.subject_code.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `attendance_${cleanSubjectCode}_${today}.xlsx`;
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buf);
   } catch (error) {
@@ -536,6 +730,7 @@ router.get('/session-info/:qr_token', async (req, res) => {
       email: session.teacher_email,
       teacher_id: session.teacher_id,
       start_time: session.start_time,
+      expire_time: session.expire_time,
       late_minute: session.late_minute
     });
   } catch (error) {
@@ -583,6 +778,116 @@ router.post('/check-duplicate-submission', async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ duplicate: false, error: 'Database error' });
+  }
+});
+
+// ==================== สรุปการเข้าเรียน ====================
+
+// ดึงข้อมูลสรุปการเข้าเรียนแต่ละคาบเรียน
+router.get('/session-summary/:sessionId', requireTeacher, async (req, res) => {
+  try {
+    const sessionId = req.params.sessionId;
+    
+    // ตรวจสอบว่า session นี้เป็นของครูคนนี้หรือไม่
+    const session = await QRCodeSession.getById(sessionId);
+    if (!session || session.teacher_id !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const summary = await Attendance.getSessionSummary(sessionId);
+    
+    if (!summary) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    res.json({
+      success: true,
+      data: summary
+    });
+  } catch (error) {
+    console.error('Error getting session summary:', error);
+    res.status(500).json({ error: 'Failed to get session summary' });
+  }
+});
+
+// ดึงข้อมูลสรุปการเข้าเรียนทั้งหมดของครู
+router.get('/all-sessions-summary', requireTeacher, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const teacherId = req.user.id;
+    
+    const summaries = await Attendance.getAllSessionsSummary(teacherId, startDate, endDate);
+    
+    res.json({
+      success: true,
+      data: summaries,
+      total: summaries.length
+    });
+  } catch (error) {
+    console.error('Error getting all sessions summary:', error);
+    res.status(500).json({ error: 'Failed to get all sessions summary' });
+  }
+});
+
+// ดึงข้อมูลสรุปการเข้าเรียนรายวิชา
+router.get('/subject-summary', requireTeacher, async (req, res) => {
+  try {
+    const { subjectName } = req.query;
+    const teacherId = req.user.id;
+    
+    const summaries = await Attendance.getSubjectSummary(teacherId, subjectName);
+    
+    res.json({
+      success: true,
+      data: summaries,
+      total: summaries.length
+    });
+  } catch (error) {
+    console.error('Error getting subject summary:', error);
+    res.status(500).json({ error: 'Failed to get subject summary' });
+  }
+});
+
+// Export สรุปการเข้าเรียนทั้งหมดเป็น Excel
+router.get('/export-summary', requireTeacher, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const teacherId = req.user.id;
+    
+    const summaries = await Attendance.getAllSessionsSummary(teacherId, startDate, endDate);
+    
+    // จัดรูปแบบข้อมูลสำหรับ Excel
+    const exportData = summaries.map(summary => ({
+      'รหัสคาบ': summary.session_id,
+      'วิชา': summary.subject_name,
+      'ชั้นเรียน': summary.class_name,
+      'กลุ่ม': summary.class_group,
+      'เวลาเริ่ม': new Date(summary.start_time).toLocaleString('th-TH'),
+      'เวลาสิ้นสุด': new Date(summary.end_time).toLocaleString('th-TH'),
+      'จำนวนนักเรียนทั้งหมด': summary.total_students,
+      'มา': summary.present_count,
+      'สาย': summary.late_count,
+      'ขาด': summary.absent_count,
+      'อัตราการมาเรียน (%)': summary.attendance_rate
+    }));
+    
+    // สร้าง Excel file
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'สรุปการเข้าเรียน');
+    
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    
+    // ตั้งชื่อไฟล์
+    const today = new Date().toISOString().split('T')[0];
+    const filename = `attendance_summary_${today}.xlsx`;
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (error) {
+    console.error('Error exporting summary:', error);
+    res.status(500).json({ error: 'Failed to export summary data' });
   }
 });
 

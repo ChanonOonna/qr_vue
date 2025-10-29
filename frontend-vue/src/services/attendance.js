@@ -11,6 +11,18 @@ export const attendanceService = {
     }
   },
 
+  // Get bulk attendance data for multiple sessions
+  async getBulkAttendance(sessionIds) {
+    try {
+      const response = await api.post('/attendance/bulk', {
+        sessionIds: sessionIds
+      })
+      return response.data
+    } catch (error) {
+      throw error
+    }
+  },
+
   // Get session by QR token
   async getSessionByToken(qrToken) {
     try {
@@ -81,14 +93,17 @@ export const attendanceService = {
     }
   },
 
-  // Export attendance to Excel
+  // Export attendance to Excel - Fixed URL path
   async exportAttendance(sessionId) {
     try {
-      const response = await api.get(`/attendance/session/${sessionId}/export`, {
+      console.log('Exporting attendance for session:', sessionId)
+      const response = await api.get(`/attendance/export/${sessionId}`, {
         responseType: 'blob'
       })
+      console.log('Export response received:', response)
       return response.data
     } catch (error) {
+      console.error('Export attendance error:', error)
       throw error
     }
   },

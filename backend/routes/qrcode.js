@@ -6,6 +6,50 @@ const { requireTeacher } = require('../auth');
 
 const router = express.Router();
 
+// Get QR session subjects by teacher_code (with query parameter)
+router.get('/sessions/subjects/by-teacher', async (req, res) => {
+  try {
+    const { teacher_code } = req.query;
+    
+    if (!teacher_code) {
+      return res.status(400).json({
+        success: false,
+        error: 'teacher_code parameter is required'
+      });
+    }
+    
+    const subjects = await QRCodeSession.getSubjectsByTeacher(teacher_code);
+    res.json({
+      success: true,
+      data: subjects,
+      teacher_code: teacher_code
+    });
+  } catch (error) {
+    console.error('Error getting QR session subjects by teacher:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to get QR session subjects' 
+    });
+  }
+});
+
+// Get QR session subjects for filter dropdowns
+router.get('/sessions/subjects', requireTeacher, async (req, res) => {
+  try {
+    const subjects = await QRCodeSession.getSubjectsByTeacher(req.user.teacher_code);
+    res.json({
+      success: true,
+      data: subjects
+    });
+  } catch (error) {
+    console.error('Error getting QR session subjects:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to get QR session subjects' 
+    });
+  }
+});
+
 // Get all QR sessions for the teacher
 router.get('/sessions', requireTeacher, async (req, res) => {
   try {

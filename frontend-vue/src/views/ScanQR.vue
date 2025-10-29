@@ -98,9 +98,13 @@
               <span class="label">เวลาเริ่ม:</span>
               <span class="value">{{ formatDateTime(sessionInfo.start_time) }}</span>
             </div>
-            <div class="detail-row">
+            <!-- <div class="detail-row">
               <span class="label">เวลาสาย:</span>
               <span class="value">{{ formatDateTime(sessionInfo.start_time, sessionInfo.late_minute) }}</span>
+            </div> -->
+            <div class="detail-row">
+              <span class="label">เวลาหมดอายุ:</span>
+              <span class="value">{{ formatDateTime(sessionInfo.expire_time) }}</span>
             </div>
           </div>
         </div>
@@ -161,6 +165,12 @@
           {{ resultMessage }}
         </div>
 
+        <!-- Debug Info -->
+        <!-- <div style="background: #f0f0f0; padding: 10px; margin: 10px 0; font-size: 12px; border-radius: 5px;">
+          <strong>Debug:</strong> {{ debugInfo }}
+        </div> -->
+
+
       </div>
     </div>
 
@@ -184,7 +194,7 @@
 
           <!-- Verification Status -->
           <div class="verification-status">
-            <div class="status-item" :class="{ completed: livenessChecks.blink }">
+            <div v-if="selectedLivenessChecks.includes('blink')" class="status-item" :class="{ completed: livenessChecks.blink }">
               <span class="status-icon"></span>
               <span class="status-text">กระพริบตา</span>
               <span class="status-check"></span>
@@ -192,7 +202,7 @@
                 {{ blinkCount }}/{{ requiredBlinkCount }} ครั้ง
               </div>
             </div>
-            <div class="status-item" :class="{ completed: livenessChecks.smile }">
+            <div v-if="selectedLivenessChecks.includes('smile')" class="status-item" :class="{ completed: livenessChecks.smile }">
               <span class="status-icon"></span>
               <span class="status-text">ยิ้ม</span>
               <span class="status-check"></span>
@@ -200,7 +210,7 @@
                 {{ smileCount }}/{{ requiredSmileCount }} ครั้ง
               </div>
             </div>
-            <div class="status-item" :class="{ completed: livenessChecks.headMovement }">
+            <div v-if="selectedLivenessChecks.includes('headMovement')" class="status-item" :class="{ completed: livenessChecks.headMovement }">
               <span class="status-icon"></span>
               <span class="status-text">ขยับศีรษะ</span>
               <span class="status-check"></span>
@@ -212,7 +222,7 @@
           
           <!-- Instructions -->
           <div class="verification-instructions">
-            <p v-if="!(livenessChecks.blink && livenessChecks.smile && livenessChecks.headMovement)">
+            <p v-if="!areSelectedChecksComplete">
               กรุณาทำตามคำแนะนำเพื่อยืนยันตัวตน:
             </p>
             
@@ -221,21 +231,21 @@
               {{ noFaceMessage }}
             </p>
             
-            <p v-if="!livenessChecks.blink && !noFaceDetected" class="instruction">
+            <p v-if="selectedLivenessChecks.includes('blink') && !livenessChecks.blink && !noFaceDetected" class="instruction">
                กรุณากระพริบตา 3 ครั้ง
             </p>
-            <p v-if="!livenessChecks.smile && livenessChecks.blink && !noFaceDetected" class="instruction">
-               กรุณายิ้มให้กล้อง 2 ครั้ง
+            <p v-if="selectedLivenessChecks.includes('smile') && !livenessChecks.smile && !noFaceDetected" class="instruction">
+               กรุณายิ้มให้กล้อง 2 ครั้ง (ยิ้มแล้วหยุด ยิ้มแล้วหยุด)
             </p>
-            <p v-if="!livenessChecks.headMovement && livenessChecks.smile && !noFaceDetected" class="instruction">
-               กรุณาขยับศีรษะไปซ้าย-ขวา 2 ครั้ง
+            <p v-if="selectedLivenessChecks.includes('headMovement') && !livenessChecks.headMovement && !noFaceDetected" class="instruction">
+               กรุณาขยับศีรษะไปซ้าย-ขวาให้ชัดเจน 2 ครั้ง (ต้องขยับมากกว่าปกติ)
             </p>
-            <p v-if="livenessChecks.blink && livenessChecks.smile && livenessChecks.headMovement" class="instruction success">
+            <p v-if="areSelectedChecksComplete" class="instruction success">
                ยืนยันตัวตนสำเร็จ! กรุณากดปุ่ม "ยืนยันใบหน้า"
             </p>
 
             <!-- Error: backend face mismatch -->
-            <div v-if="modalError" class="modal-error">
+            <div v-if="modalError" :class="['modal-error', modalError.includes('กำลัง') ? 'progress' : '']">
               {{ modalError }}
             </div>
           </div>
@@ -252,7 +262,7 @@
           <button 
             @click="submitWithFaceVerification" 
             class="btn btn-success"
-            :disabled="loading || !(livenessChecks.blink && livenessChecks.smile && livenessChecks.headMovement)"
+            :disabled="loading || !areSelectedChecksComplete"
           >
             ยืนยันใบหน้า
           </button>
@@ -330,6 +340,11 @@ export default {
              studentForm.lastname.trim()
     })
     
+    // ตรวจสอบว่าขั้นตอนที่เลือกเสร็จครบแล้วหรือไม่
+    const areSelectedChecksComplete = computed(() => {
+      return selectedLivenessChecks.value.every(check => livenessChecks[check])
+    })
+    
     // เพิ่มตัวนับจำนวนครั้ง
     const blinkCount = ref(0)
     const smileCount = ref(0)
@@ -339,6 +354,16 @@ export default {
     const requiredBlinkCount = 3
     const requiredSmileCount = 2
     const requiredHeadMovementCount = 2
+    
+    // สุ่มเลือก 2 จาก 3 ขั้นตอน
+    const selectedLivenessChecks = ref([])
+    const initializeRandomChecks = () => {
+      const allChecks = ['blink', 'smile', 'headMovement']
+      // สุ่มเลือก 2 ขั้นตอน
+      const shuffled = allChecks.sort(() => 0.5 - Math.random())
+      selectedLivenessChecks.value = shuffled.slice(0, 2)
+      console.log('เลือกขั้นตอน:', selectedLivenessChecks.value)
+    }
     
     // เพิ่มตัวแปรสำหรับการแจ้งเตือน
     const noFaceDetected = ref(false)
@@ -499,7 +524,7 @@ export default {
         sessionInfo.value = { ...response, qr_token: qrToken }
         
         resultMessage.value = 'พบ QR Code แล้ว กรุณากรอกข้อมูลนักเรียน'
-        resultClass.value = 'result-success'
+        resultClass.value = 'result-info'
         
       } catch (error) {
         console.error('Failed to process QR code:', error)
@@ -525,9 +550,13 @@ export default {
       try {
         showFaceVerificationModal.value = true
         loading.value = true
+        console.log('Setting "กำลังเริ่มการยืนยันใบหน้า..." message')
         resultMessage.value = 'กำลังเริ่มการยืนยันใบหน้า...'
         resultClass.value = 'result-info'
         modalError.value = ''
+        
+        // สุ่มเลือกขั้นตอนที่จะใช้
+        initializeRandomChecks()
         
         // Load face-api.js models if not loaded
         if (typeof faceapi === 'undefined') {
@@ -556,8 +585,41 @@ export default {
       }
     }
 
-    const closeFaceVerificationModal = () => {
+    const closeFaceVerificationModal = (isSuccess = false) => {
+      console.log('=== closeFaceVerificationModal START ===')
+      console.log('isSuccess parameter:', isSuccess)
+      console.log('isSuccess type:', typeof isSuccess)
+      
+      // ถ้า isSuccess เป็น Event Object ให้ถือว่าเป็นการยกเลิก
+      if (isSuccess && typeof isSuccess === 'object' && isSuccess.type) {
+        console.log('isSuccess is an Event object, treating as cancellation')
+        isSuccess = false
+      }
+      
+      console.log('Processed isSuccess:', isSuccess)
+      console.log('Current resultMessage before:', resultMessage.value)
+      console.log('Current resultClass before:', resultClass.value)
+      
       showFaceVerificationModal.value = false
+      
+      // ถ้าไม่ใช่การปิดแบบสำเร็จ ให้แสดงข้อความยกเลิก
+      if (!isSuccess) {
+        console.log('Setting cancellation message - isSuccess is false')
+        resultMessage.value = 'ทำการยกเลิกการสแกนแล้ว'
+        resultClass.value = 'result-error'
+        console.log('New resultMessage:', resultMessage.value)
+        console.log('New resultClass:', resultClass.value)
+        
+        // ตั้งเวลาให้ข้อความหายไปหลังจาก 3 วินาที
+        setTimeout(() => {
+          resultMessage.value = ''
+          resultClass.value = ''
+        }, 3000)
+      } else {
+        console.log('Success case - not setting cancellation message')
+      }
+      
+      console.log('=== closeFaceVerificationModal END ===')
       
       // Reset face detection alerts
       noFaceDetected.value = false
@@ -736,14 +798,18 @@ export default {
     const checkLiveness = (detection) => {
       if (!detection.landmarks || !detection.expressions) return
       
-      // Check blink detection
-      checkBlink(detection.landmarks)
+      // Check only selected liveness checks
+      if (selectedLivenessChecks.value.includes('blink')) {
+        checkBlink(detection.landmarks)
+      }
       
-      // Check smile detection
-      checkSmile(detection.expressions)
+      if (selectedLivenessChecks.value.includes('smile')) {
+        checkSmile(detection.expressions)
+      }
       
-      // Check head movement
-      checkHeadMovement(detection.landmarks)
+      if (selectedLivenessChecks.value.includes('headMovement')) {
+        checkHeadMovement(detection.landmarks)
+      }
     }
 
     const checkBlink = (landmarks) => {
@@ -759,20 +825,20 @@ export default {
       
       eyeAspectRatioHistory.value.push(avgEAR)
       
-      // Keep only last 5 frames
-      if (eyeAspectRatioHistory.value.length > 5) {
+      // Keep only last 8 frames (เพิ่มจาก 5 เป็น 8)
+      if (eyeAspectRatioHistory.value.length > 8) {
         eyeAspectRatioHistory.value.shift()
       }
       
-      // Check for blink (EAR drops below threshold)
-      if (eyeAspectRatioHistory.value.length >= 2) {
-        const recentEAR = eyeAspectRatioHistory.value.slice(-2)
+      // Check for blink (EAR drops below threshold) - ต้องมีข้อมูลอย่างน้อย 3 frames
+      if (eyeAspectRatioHistory.value.length >= 3) {
+        const recentEAR = eyeAspectRatioHistory.value.slice(-3)
         const avgRecentEAR = recentEAR.reduce((a, b) => a + b) / recentEAR.length
         
-        if (avgRecentEAR < 0.3 && Date.now() - lastBlinkTime.value > 300) {
+        if (avgRecentEAR < 0.3 && Date.now() - lastBlinkTime.value > 200) {
           blinkCount.value++
           lastBlinkTime.value = Date.now()
-          console.log('Blink detected!', blinkCount.value)
+          console.log('Blink detected!', blinkCount.value, 'EAR:', avgRecentEAR)
           
           // ตรวจสอบว่ากระพริบครบแล้วหรือยัง
           if (blinkCount.value >= requiredBlinkCount) {
@@ -808,20 +874,21 @@ export default {
       const smileConfidence = expressions.happy
       smileHistory.value.push(smileConfidence)
       
-      // Keep only last 5 frames
-      if (smileHistory.value.length > 5) {
+      // Keep only last 10 frames (เพิ่มจาก 5 เป็น 10)
+      if (smileHistory.value.length > 10) {
         smileHistory.value.shift()
       }
       
-      // Check for sustained smile
-      if (smileHistory.value.length >= 2) {
-        const recentSmiles = smileHistory.value.slice(-2)
+      // Check for sustained smile (ต้องมีข้อมูลอย่างน้อย 5 frames)
+      if (smileHistory.value.length >= 5) {
+        const recentSmiles = smileHistory.value.slice(-5)
         const avgSmile = recentSmiles.reduce((a, b) => a + b) / recentSmiles.length
         
-        if (avgSmile > 0.1 && Date.now() - lastSmileTime.value > 200) {
+        // เพิ่ม threshold จาก 0.1 เป็น 0.3 และเพิ่มเวลารอจาก 200ms เป็น 2000ms
+        if (avgSmile > 0.3 && Date.now() - lastSmileTime.value > 2000) {
           smileCount.value++
           lastSmileTime.value = Date.now()
-          console.log('Smile detected!', smileCount.value)
+          console.log('Smile detected!', smileCount.value, 'Smile confidence:', avgSmile)
           
           // ตรวจสอบว่ายิ้มครบแล้วหรือยัง
           if (smileCount.value >= requiredSmileCount) {
@@ -834,19 +901,25 @@ export default {
     const checkHeadMovement = (landmarks) => {
       if (livenessChecks.headMovement) return
       
-      // Use nose tip position for head movement detection
+      // Use multiple points for more accurate head movement detection
       const noseTip = landmarks.positions[30]
-      const currentPosition = { x: noseTip.x, y: noseTip.y }
+      const leftEye = landmarks.positions[36]
+      const rightEye = landmarks.positions[45]
+      
+      // Calculate center point of face
+      const centerX = (noseTip.x + leftEye.x + rightEye.x) / 3
+      const centerY = (noseTip.y + leftEye.y + rightEye.y) / 3
+      const currentPosition = { x: centerX, y: centerY }
       
       headPositionHistory.value.push(currentPosition)
       
-      // Keep only last 10 frames
-      if (headPositionHistory.value.length > 10) {
+      // Keep only last 20 frames (เพิ่มจาก 15 เป็น 20)
+      if (headPositionHistory.value.length > 20) {
         headPositionHistory.value.shift()
       }
       
-      // Check for significant head movement
-      if (headPositionHistory.value.length >= 5) {
+      // Check for significant head movement (ต้องมีข้อมูลอย่างน้อย 10 frames)
+      if (headPositionHistory.value.length >= 10) {
         const firstPos = headPositionHistory.value[0]
         const lastPos = headPositionHistory.value[headPositionHistory.value.length - 1]
         
@@ -855,10 +928,11 @@ export default {
           Math.pow(lastPos.y - firstPos.y, 2)
         )
         
-        if (movement > 30 && Date.now() - lastHeadMovementTime.value > 1000) {
+        // เพิ่ม threshold จาก 50 เป็น 80 และเพิ่มเวลารอจาก 2000ms เป็น 3000ms
+        if (movement > 80 && Date.now() - lastHeadMovementTime.value > 3000) {
           headMovementCount.value++
           lastHeadMovementTime.value = Date.now()
-          console.log('Head movement detected!', headMovementCount.value)
+          console.log('Head movement detected!', headMovementCount.value, 'Movement distance:', movement)
           
           // ตรวจสอบว่าขยับครบแล้วหรือยัง
           if (headMovementCount.value >= requiredHeadMovementCount) {
@@ -869,7 +943,7 @@ export default {
     }
 
     const skipFaceVerification = () => {
-      closeFaceVerificationModal()
+      closeFaceVerificationModal(true)
       faceVerificationComplete.value = true
       resultMessage.value = 'ข้ามการยืนยันใบหน้าแล้ว กรุณาส่งข้อมูล'
       resultClass.value = 'result-info'
@@ -969,6 +1043,9 @@ export default {
         resultMessage.value = ''
         modalError.value = ''
         
+        // Show progress message
+        modalError.value = 'กำลังประมวลผลใบหน้า...'
+        
         // Get face descriptor from current detection
         let faceDescriptor = null
         if (faceVideo.value) {
@@ -999,8 +1076,14 @@ export default {
           return
         }
         
-        // Get client IP address
-        const clientIP = await getClientIP()
+        // Update progress
+        modalError.value = 'กำลังส่งข้อมูล...'
+        
+        // Get client IP address (with timeout)
+        const clientIP = await Promise.race([
+          getClientIP(),
+          new Promise((resolve) => setTimeout(() => resolve('unknown'), 3000)) // 3 second timeout
+        ])
         
         // Submit check-in data
         const checkInData = {
@@ -1012,16 +1095,22 @@ export default {
           ip_address: clientIP
         }
         
-        const result = await attendanceService.checkIn(checkInData)
+        // Add timeout to API call
+        const result = await Promise.race([
+          attendanceService.checkIn(checkInData),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Request timeout')), 15000) // 15 second timeout
+          )
+        ])
         
         // Success
-        resultMessage.value = `เช็คชื่อสำเร็จ! สถานะ: ${result.status}`
+        resultMessage.value = `เช็คชื่อสำเร็จ สถานะ: ${result.status}`
         resultClass.value = 'result-success'
         
-        // Close modal
-        closeFaceVerificationModal()
+        // Close modal (success case)
+        closeFaceVerificationModal(true)
         
-        // Reset form
+        // Reset form data only (keep success message)
         Object.assign(studentForm, {
           student_code: '',
           firstname: '',
@@ -1039,16 +1128,70 @@ export default {
           headMovement: false
         })
         
+        // Reset counters
+        blinkCount.value = 0
+        smileCount.value = 0
+        headMovementCount.value = 0
+        
+        // Reset histories
+        eyeAspectRatioHistory.value = []
+        smileHistory.value = []
+        headPositionHistory.value = []
+        
+        // Reset times
+        lastBlinkTime.value = 0
+        lastSmileTime.value = 0
+        lastHeadMovementTime.value = 0
+        
+        // Reset face detection state
+        isFaceDetected.value = false
+        noFaceDetected.value = false
+        noFaceMessage.value = ''
+        
+        // Reset selected liveness checks
+        selectedLivenessChecks.value = []
+        
+        // Stop any active scanning
+        stopScanning()
+        
+        // Reset form and states for next user
+        Object.assign(studentForm, {
+          student_code: '',
+          firstname: '',
+          lastname: ''
+        })
+        
+        // Reset session info
+        sessionInfo.value = null
+        manualToken.value = ''
+        faceVerificationComplete.value = false
+        
+        // Reset scanning state
+        isScanning.value = false
+        scanningError.value = ''
+        
+        // Reset loading state
+        loading.value = false
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          resultMessage.value = ''
+          resultClass.value = ''
+        }, 5000)
+        
         showNotification('เช็คชื่อสำเร็จ', 'success')
         
       } catch (error) {
         console.error('Failed to submit student info:', error)
         console.error('Error response:', error.response?.data)
-        // Close modal and show error on main page
-        closeFaceVerificationModal()
-        resultMessage.value = error.response?.data?.error || 'ใบหน้าที่สแกนไม่ตรงกับข้อมูลที่ลงทะเบียนไว้ กรุณาลองใหม่'
-        resultClass.value = 'result-error'
-      } finally {
+        
+        // Handle timeout error
+        if (error.message === 'Request timeout') {
+          modalError.value = 'การส่งข้อมูลใช้เวลานานเกินไป กรุณาลองใหม่'
+        } else {
+          modalError.value = error.response?.data?.error || 'ใบหน้าที่สแกนไม่ตรงกับข้อมูลที่ลงทะเบียนไว้ กรุณาลองใหม่'
+        }
+        
         loading.value = false
       }
     }
@@ -1056,6 +1199,8 @@ export default {
     const goBack = () => {
       router.push('/')
     }
+
+
 
     // Lifecycle
     onMounted(async () => {
@@ -1089,11 +1234,60 @@ export default {
     })
 
     onUnmounted(() => {
+      console.log('ScanQR: Cleaning up resources...')
+      
+      // Stop all scanning and face detection
       stopScanning()
       closeFaceVerificationModal()
+      
+      // Clear all intervals
+      if (scanInterval) {
+        clearInterval(scanInterval)
+        scanInterval = null
+      }
+      
+      if (faceDetectionInterval.value) {
+        clearInterval(faceDetectionInterval.value)
+        faceDetectionInterval.value = null
+      }
+      
+      // Stop all camera streams
+      if (qrStream) {
+        qrStream.getTracks().forEach(track => track.stop())
+        qrStream = null
+      }
+      
+      if (faceStream) {
+        faceStream.getTracks().forEach(track => track.stop())
+        faceStream = null
+      }
+      
+      // Clear video sources
+      if (video.value) {
+        video.value.srcObject = null
+      }
+      
+      if (faceVideo.value) {
+        faceVideo.value.srcObject = null
+      }
+      
+      // Clear canvas overlays
+      if (overlay.value) {
+        const ctx = overlay.value.getContext('2d')
+        ctx.clearRect(0, 0, overlay.value.width, overlay.value.height)
+      }
+      
+      if (faceOverlay.value) {
+        const ctx = faceOverlay.value.getContext('2d')
+        ctx.clearRect(0, 0, faceOverlay.value.width, faceOverlay.value.height)
+      }
+      
+      // Remove event listeners
       if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
         navigator.mediaDevices.removeEventListener('devicechange', loadCameras)
       }
+      
+      console.log('ScanQR: Cleanup completed')
     })
 
     return {
@@ -1111,6 +1305,12 @@ export default {
       sessionInfo,
       resultMessage,
       resultClass,
+      // Debug info
+      debugInfo: computed(() => ({
+        resultMessage: resultMessage.value,
+        resultClass: resultClass.value,
+        showFaceVerificationModal: showFaceVerificationModal.value
+      })),
       studentForm,
       showFaceVerificationModal,
       faceVerificationComplete,
@@ -1124,8 +1324,7 @@ export default {
       
       // Computed
       isFormValid,
-      // ลบบรรทัดนี้
-      // allLivenessChecksComplete,
+      areSelectedChecksComplete,
       
       // Methods
       startScanning,
@@ -1145,6 +1344,7 @@ export default {
       requiredBlinkCount,
       requiredSmileCount,
       requiredHeadMovementCount,
+      selectedLivenessChecks,
     }
   }
 }
@@ -1483,6 +1683,8 @@ video {
   border: 2px solid #3498db;
 }
 
+
+
 /* Modal Styles */
 .modal-overlay {
   position: fixed;
@@ -1725,41 +1927,11 @@ video {
   }
 }
 
-@media (max-width: 480px) {
-  .form-row {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-  
-  .verification-status {
-    flex-direction: column;
-    gap: 10px;
-  }
-  
-  .status-item {
-    min-width: auto;
-  }
-  
-  .modal-content {
-    margin: 10px;
-    max-height: 95vh;
-  }
-  
-  .modal-header {
-    padding: 15px 20px;
-  }
-  
-  .modal-body {
-    padding: 20px;
-  }
-  
-  .modal-footer {
-    padding: 15px 20px;
-  }
-}
+/* Responsive Design */
+/* Desktop/Laptop (≥768px) - Default styles already defined above */
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Tablet (376px - 768px) */
+@media (max-width: 768px) and (min-width: 376px) {
   .scan-container {
     padding: 10px;
   }
@@ -1774,10 +1946,163 @@ video {
   
   .form-row {
     flex-direction: column;
+    gap: 15px;
   }
   
   .btn {
     padding: 10px 20px;
+    font-size: 0.9rem;
+  }
+  
+  .verification-status {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .status-item {
+    min-width: auto;
+  }
+  
+  .modal-content {
+    margin: 20px;
+    max-height: 90vh;
+  }
+}
+
+/* iPhone 11 และมือถือเล็ก (≤375px) */
+@media (max-width: 375px) {
+  .scan-container {
+    padding: 5px;
+  }
+  
+  .scan-content {
+    padding: 15px 10px;
+  }
+  
+  .scan-header h1 {
+    font-size: 1.3rem;
+  }
+  
+  .scan-header p {
+    font-size: 0.9rem;
+  }
+  
+  .camera-container {
+    height: 200px;
+    margin-bottom: 15px;
+  }
+  
+  .form-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .form-group {
+    margin-bottom: 15px;
+  }
+  
+  .form-group label {
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+  }
+  
+  .form-group input {
+    padding: 10px 12px;
+    font-size: 0.9rem;
+  }
+  
+  .btn {
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .btn-primary {
+    margin-bottom: 10px;
+  }
+  
+  .verification-status {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .status-item {
+    min-width: auto;
+    padding: 8px 12px;
+  }
+  
+  .status-item .status-icon {
+    font-size: 1rem;
+  }
+  
+  .status-item .status-text {
+    font-size: 0.8rem;
+  }
+  
+  .verification-instructions p {
+    font-size: 0.9rem;
+  }
+  
+  .instruction {
+    font-size: 0.85rem;
+  }
+  
+  /* Modal สำหรับมือถือเล็ก */
+  .modal-overlay {
+    padding: 5px;
+  }
+  
+  .modal-content {
+    margin: 0;
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: 15px;
+  }
+  
+  .modal-header {
+    padding: 15px 20px;
+  }
+  
+  .modal-header h3 {
+    font-size: 1.2rem;
+  }
+  
+  .close-btn {
+    width: 35px;
+    height: 35px;
+    font-size: 1.2rem;
+  }
+  
+  .modal-body {
+    padding: 20px;
+  }
+  
+  .modal-footer {
+    padding: 15px 20px;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .modal-footer .btn {
+    width: 100%;
+  }
+  
+  .modal-error {
+    font-size: 0.85rem;
+    padding: 10px;
+  }
+  
+  .result-message {
+    padding: 15px;
+    font-size: 0.9rem;
+  }
+  
+  .loading {
+    padding: 20px 15px;
+  }
+  
+  .loading p {
     font-size: 0.9rem;
   }
 }
@@ -1789,5 +2114,22 @@ video {
   border-radius: 8px;
   text-align: center;
   margin-top: 12px;
+  font-weight: 600;
+}
+
+.modal-error.progress {
+  background: #e3f2fd;
+  color: #1976d2;
+  border-color: #1976d2;
+}
+
+.modal-error.progress::before {
+  content: '⏳ ';
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 </style> 
