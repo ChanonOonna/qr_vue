@@ -30,11 +30,24 @@ api.interceptors.response.use(
   (response) => {
     return response
   },
-  (error) => {
+  async (error) => {
     // Handle common errors
     if (error.response?.status === 401) {
-      // Don't redirect automatically, let components handle it
-      console.log('Unauthorized request')
+      // Session expired or unauthorized - redirect to login
+      console.log('Session expired - redirecting to login')
+      
+      // Clear auth state
+      const { useAuthStore } = await import('../stores/auth')
+      const authStore = useAuthStore()
+      authStore.user = null
+      authStore.isAuthenticated = false
+      authStore.authChecked = false
+      authStore.error = null
+      
+      // Redirect to login page with session expired parameter
+      if (window.location.pathname !== '/') {
+        window.location.href = '/?session_expired=true'
+      }
     } else if (error.response?.status === 429) {
       console.warn('Rate limited by server')
     }

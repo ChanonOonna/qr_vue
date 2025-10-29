@@ -93,17 +93,19 @@ router.beforeEach(async (to, from, next) => {
         try {
           await authStore.checkAuthStatus()
           if (!authStore.isAuthenticated) {
-            next('/')
+            // Session expired or not authenticated
+            next({ path: '/', query: { session_expired: 'true' } })
             return
           }
         } catch (error) {
           console.error('Auth check failed:', error)
-          next('/')
+          // Session expired or auth failed
+          next({ path: '/', query: { session_expired: 'true' } })
           return
         }
       } else {
-        // Auth already checked and failed, redirect to login
-        next('/')
+        // Auth already checked and failed, redirect to login with session expired message
+        next({ path: '/', query: { session_expired: 'true' } })
         return
       }
     }

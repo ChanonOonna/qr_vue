@@ -124,6 +124,12 @@ export default {
         const domainsText = allowedDomains.value.join(', ')
         loginWarning.value = `อีเมลของคุณไม่อยู่ในรายการที่อนุญาต กรุณาใช้อีเมลจาก: ${domainsText}`
       }
+      
+      // Show message if session expired
+      if (route.query.session_expired === 'true') {
+        loginWarning.value = 'Session หมดอายุ กรุณา login ใหม่'
+      }
+      
       // Don't check auth on login page - let user click login button
       // Auth check is handled by router guards
     })
